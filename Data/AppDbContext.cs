@@ -18,6 +18,11 @@ namespace ProposalStudio.Data
 
         public DbSet<Client> Clients { get; set; }
 
+        public DbSet<User> Users { get; set; }
+        public DbSet<Template> Templates { get; set; }
+        public DbSet<Proposal> Proposals { get; set; }
+        public DbSet<ProposalItem> ProposalItems { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -123,6 +128,90 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Phone).HasColumnName("phone");
                 entity.Property(e => e.Notes).HasColumnName("notes");
                 entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.ToTable("users");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.Name).HasColumnName("name");
+                entity.Property(e => e.Email).HasColumnName("email");
+                entity.Property(e => e.Phone).HasColumnName("phone");
+                entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
+                entity.Property(e => e.Role).HasColumnName("role").HasConversion<string>();
+                entity.Property(e => e.Active).HasColumnName("active");
+                entity.Property(e => e.TwoFactorEnabled).HasColumnName("two_factor_enabled");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<Template>(entity =>
+            {
+                entity.ToTable("templates");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.Key).HasColumnName("key");
+                entity.Property(e => e.Name).HasColumnName("name");
+                entity.Property(e => e.Version).HasColumnName("version");
+                entity.Property(e => e.PageSchema).HasColumnName("page_schema").HasColumnType("jsonb");
+                entity.Property(e => e.StylingLocked).HasColumnName("styling_locked");
+                entity.Property(e => e.Active).HasColumnName("active");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<Proposal>(entity =>
+            {
+                entity.ToTable("proposals");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.ReferenceNumber).HasColumnName("reference_number");
+                entity.Property(e => e.Reference).HasColumnName("reference");
+                entity.Property(e => e.TemplateId).HasColumnName("template_id");
+                entity.Property(e => e.TemplateVersion).HasColumnName("template_version");
+                entity.Property(e => e.ClientId).HasColumnName("client_id");
+                entity.Property(e => e.AdvisorId).HasColumnName("advisor_id");
+                entity.Property(e => e.Currency).HasColumnName("currency").HasConversion<string>();
+                entity.Property(e => e.VatMode).HasColumnName("vat_mode").HasConversion<string>();
+                entity.Property(e => e.ValidityDays).HasColumnName("validity_days");
+                entity.Property(e => e.Status).HasColumnName("status").HasConversion<string>();
+                entity.Property(e => e.PriceTotal).HasColumnName("price_total");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+                entity.Property(e => e.SentAt).HasColumnName("sent_at");
+                entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+                entity.Property(e => e.Snapshot).HasColumnName("snapshot").HasColumnType("jsonb");
+                entity.Property(e => e.PdfUrl).HasColumnName("pdf_url");
+            });
+
+            modelBuilder.Entity<ProposalItem>(entity =>
+            {
+                entity.ToTable("proposal_items");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProposalId).HasColumnName("proposal_id");
+                entity.Property(e => e.ProductId).HasColumnName("product_id");
+                entity.Property(e => e.Finish).HasColumnName("finish");
+                entity.Property(e => e.Qty).HasColumnName("qty");
+                entity.Property(e => e.UnitPrice).HasColumnName("unit_price");
+                entity.Property(e => e.PriceOverride).HasColumnName("price_override");
+                entity.Property(e => e.Included).HasColumnName("included");
+                entity.Property(e => e.Excluded).HasColumnName("excluded");
+                entity.Property(e => e.Addons).HasColumnName("addons").HasColumnType("jsonb");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             });

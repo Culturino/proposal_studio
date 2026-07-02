@@ -133,5 +133,68 @@
       }
     ],
     "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "GetProposals",
+    "RelativePath": "api/Proposals",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "CreateProposal",
+    "RelativePath": "api/Proposals",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.CreateProposalRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "GetProposal",
+    "RelativePath": "api/Proposals/{id}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "UpsertProposalItem",
+    "RelativePath": "api/Proposals/{id}/item",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.UpsertProposalItemRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
   }
 ]
