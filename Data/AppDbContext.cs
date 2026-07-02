@@ -16,6 +16,8 @@ namespace ProposalStudio.Data
         public DbSet<Product> Products { get; set; }
         public DbSet<Price> Prices { get; set; }
 
+        public DbSet<Client> Clients { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -104,6 +106,23 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Amount).HasColumnName("amount");
                 entity.Property(e => e.ValidFrom).HasColumnName("valid_from");
                 entity.Property(e => e.Source).HasColumnName("source");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<Client>(entity =>
+            {
+                entity.ToTable("clients");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.Name).HasColumnName("name");
+                entity.Property(e => e.Email).HasColumnName("email");
+                entity.Property(e => e.Phone).HasColumnName("phone");
+                entity.Property(e => e.Notes).HasColumnName("notes");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             });
