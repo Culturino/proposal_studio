@@ -343,6 +343,80 @@ namespace ProposalStudio.Controllers
                 }
             });
         }
+
+        [HttpGet("{id}/preview")]
+        public async Task<IActionResult> Preview(Guid id)
+        {
+            var proposal = await _context.Proposals
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            var business = await _context.Businesses
+                .FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
+
+            var client = await _context.Clients
+                .FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
+
+            var advisor = await _context.Users
+                .FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
+
+            var template = await _context.Templates
+                .FirstOrDefaultAsync(t => t.Id == proposal.TemplateId);
+
+            var item = await _context.ProposalItems
+                .FirstOrDefaultAsync(i => i.ProposalId == proposal.Id);
+
+            if (item == null)
+            {
+                return Ok(new
+                {
+                    Business = business,
+                    Proposal = proposal,
+                    Client = client,
+                    Advisor = advisor,
+                    Template = template,
+                    Item = (object?)null
+                });
+            }
+
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.Id == item.ProductId);
+
+            var brand = product == null
+                ? null
+                : await _context.Brands.FirstOrDefaultAsync(b => b.Id == product.BrandId);
+
+            var category = product == null
+                ? null
+                : await _context.ProductCategories.FirstOrDefaultAsync(c => c.Id == product.CategoryId);
+
+            return Ok(new
+            {
+                Business = business,
+                Proposal = proposal,
+                Client = client,
+                Advisor = advisor,
+                Template = template,
+                Item = new
+                {
+                    item.Id,
+                    item.Qty,
+                    item.Finish,
+                    item.UnitPrice,
+                    item.PriceOverride,
+                    item.Included,
+                    item.Excluded,
+                    item.Addons,
+                    Product = product,
+                    Brand = brand,
+                    Category = category
+                }
+            });
+        }
     }
 
     public class CreateProposalRequest
