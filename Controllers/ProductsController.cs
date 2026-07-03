@@ -103,5 +103,17 @@ namespace ProposalStudio.Controllers
 
             return Ok(product);
         }
+
+        [HttpGet("{id}/finishes")]
+        public async Task<IActionResult> GetFinishes(Guid id)
+        {
+            var product = await _context.Products
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+                return NotFound("Product not found");
+
+            return Ok(product.Finishes ?? Array.Empty<string>());
+        }
     }
 }
