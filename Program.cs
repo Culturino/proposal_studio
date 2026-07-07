@@ -1,6 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // -------------------- SERVICES --------------------
@@ -25,6 +29,38 @@ builder.Services.AddCors(options =>
     });
 });
 
+
+
+
+// ... [Existing DbContext and CORS Setup] ...
+
+// Add JWT Authentication
+var jwtKey = builder.Configuration["JwtSettings:SecretKey"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong";
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false; // Set to true in production
+    options.SaveToken = true;
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
+        ValidateIssuer = false, // Set to true if you specify an issuer
+        ValidateAudience = false,
+        RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" // Important for ASP.NET to map roles
+    };
+});
+
+builder.Services.AddAuthorization(); // Make sure this is added before Build()
+
+
+
+
 // -------------------- BUILD APP --------------------
 
 var app = builder.Build();
@@ -39,14 +75,19 @@ if (app.Environment.IsDevelopment())
 
 // IMPORTANT: order matters
 
+
 app.UseHttpsRedirection();
 
+app.UseStaticFiles();
+
+
+app.UseRouting();
 app.UseCors("AllowFrontend");
+
+app.UseAuthentication(); // <-- ADD THIS HERE
 
 app.UseAuthorization();
 
 app.MapControllers();
-
-// -------------------- RUN --------------------
 
 app.Run();

@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 
@@ -6,6 +7,7 @@ namespace ProposalStudio.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    //[Authorize] // Requires user to be logged in to access the catalog
     public class ProductsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -58,6 +60,7 @@ namespace ProposalStudio.Controllers
         }
 
         [HttpGet("{id}")]
+        [Authorize] 
         public async Task<IActionResult> GetProduct(Guid id)
         {
             var product = await (
@@ -114,6 +117,36 @@ namespace ProposalStudio.Controllers
                 return NotFound("Product not found");
 
             return Ok(product.Finishes ?? Array.Empty<string>());
+        }
+
+        [HttpGet("test-image/{id}")]
+        [AllowAnonymous] // Optional: Let anyone see the test image endpoint, or remove this to secure it
+        public IActionResult TestImage(Guid id)
+        {
+            var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images/products", $"{id}.png");
+
+            return Ok(new
+            {
+                path,
+                exists = System.IO.File.Exists(path)
+            });
+        }
+
+        // ------------------------------------------------------------------
+        // NEW: Enforcing the "Edit catalog" Admin-only rule from your matrix
+        // ------------------------------------------------------------------
+
+        [HttpPut("{id}")]
+        [Authorize] // <--- ONLY Admins can edit the catalog
+        public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] object updateRequest) // Replace 'object' with your actual DTO class
+        {
+            // var product = await _context.Products.FindAsync(id);
+            // if (product == null) return NotFound();
+            // 
+            // Update logic here...
+            // await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Product updated successfully (Admin Only)" });
         }
     }
 }

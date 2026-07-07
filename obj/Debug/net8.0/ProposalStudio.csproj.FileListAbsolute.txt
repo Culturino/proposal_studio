@@ -112,3 +112,13 @@ C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\tr\Microsoft.CodeAna
 C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\zh-Hans\Microsoft.CodeAnalysis.Workspaces.resources.dll
 C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\zh-Hant\Microsoft.CodeAnalysis.Workspaces.resources.dll
 C:\Users\ACER\Desktop\inter\ProposalStudio\obj\Debug\net8.0\ProposalStudio.sourcelink.json
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\ProposalStudio.staticwebassets.runtime.json
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\BCrypt-Net-Next.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.AspNetCore.Authentication.JwtBearer.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Abstractions.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.JsonWebTokens.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Logging.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
