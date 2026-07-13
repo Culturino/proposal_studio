@@ -16,6 +16,7 @@ namespace ProposalStudio.Data
         public DbSet<Product> Products { get; set; }
         public DbSet<Price> Prices { get; set; }
 
+        public DbSet<Addon> Addons { get; set; }
         public DbSet<Client> Clients { get; set; }
 
         public DbSet<User> Users { get; set; }
@@ -53,6 +54,22 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.BusinessId).HasColumnName("business_id");
                 entity.Property(e => e.Name).HasColumnName("name");
                 entity.Property(e => e.LogoAssetId).HasColumnName("logo_asset_id");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<Addon>(entity =>
+            {
+                entity.ToTable("addons");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.Name).HasColumnName("name");
+                entity.Property(e => e.Amount).HasColumnName("price"); // has to be moved to the prices table?
+                entity.Property(e => e.Currency).HasColumnName("currency").HasConversion<string>();
+                entity.Property(e => e.Active).HasColumnName("active");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             });
