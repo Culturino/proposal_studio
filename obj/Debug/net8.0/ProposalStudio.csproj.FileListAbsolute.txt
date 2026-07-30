@@ -122,3 +122,7 @@ C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityMo
 C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
 C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.IdentityModel.Tokens.dll
 C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\System.IdentityModel.Tokens.Jwt.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.AspNetCore.JsonPatch.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Microsoft.AspNetCore.Mvc.NewtonsoftJson.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Newtonsoft.Json.dll
+C:\Users\ACER\Desktop\inter\ProposalStudio\bin\Debug\net8.0\Newtonsoft.Json.Bson.dll

@@ -12,7 +12,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddControllers();
+// -------- HERE IS THE FIX FOR JSON PATCH --------
+builder.Services.AddControllers().AddNewtonsoftJson();
+// ------------------------------------------------
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -28,8 +30,6 @@ builder.Services.AddCors(options =>
             .AllowAnyMethod();
     });
 });
-
-
 
 
 // ... [Existing DbContext and CORS Setup] ...
@@ -59,8 +59,6 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization(); // Make sure this is added before Build()
 
 
-
-
 // -------------------- BUILD APP --------------------
 
 var app = builder.Build();
@@ -75,16 +73,14 @@ if (app.Environment.IsDevelopment())
 
 // IMPORTANT: order matters
 
-
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
 
-
 app.UseRouting();
 app.UseCors("AllowFrontend");
 
-app.UseAuthentication(); // <-- ADD THIS HERE
+app.UseAuthentication(); // <-- Added for JWT
 
 app.UseAuthorization();
 

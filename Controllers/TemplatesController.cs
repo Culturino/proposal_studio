@@ -55,6 +55,7 @@ namespace ProposalStudio.Controllers
         {
             template.Id = Guid.NewGuid();
             template.CreatedAt = DateTimeOffset.UtcNow;
+            template.UpdatedAt = DateTimeOffset.UtcNow; // Ensure this exists on model
             template.Active = true;
 
             _context.Templates.Add(template);
@@ -63,19 +64,36 @@ namespace ProposalStudio.Controllers
             return CreatedAtAction(nameof(GetTemplate), new { id = template.Id }, template);
         }
 
-        // PUT: api/templates/{id}
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateTemplate(Guid id, Template request)
+        // PATCH: api/templates/{id}
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateTemplate(Guid id, [FromBody] UpdateTemplateRequest request)
         {
             var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == id);
 
             if (template == null)
                 return NotFound();
 
-            template.Name = request.Name;
-            template.Key = request.Key;
-            template.Version = request.Version;
-            template.Active = request.Active;
+            if (request.Name != null && !string.IsNullOrWhiteSpace(request.Name))
+            {
+                template.Name = request.Name.Trim();
+            }
+
+            if (request.Key != null && !string.IsNullOrWhiteSpace(request.Key))
+            {
+                template.Key = request.Key.Trim();
+            }
+
+            if (request.Version.HasValue)
+            {
+                template.Version = request.Version.Value;
+            }
+
+            if (request.Active.HasValue)
+            {
+                template.Active = request.Active.Value;
+            }
+
+            template.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _context.SaveChangesAsync();
 
@@ -96,5 +114,13 @@ namespace ProposalStudio.Controllers
 
             return NoContent();
         }
+    }
+
+    public class UpdateTemplateRequest
+    {
+        public string? Name { get; set; }
+        public string? Key { get; set; }
+        public int? Version { get; set; }
+        public bool? Active { get; set; }
     }
 }

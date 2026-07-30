@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
+using Microsoft.AspNetCore.JsonPatch;
+using ProposalStudio.Models;
 
 namespace ProposalStudio.Controllers
 {
@@ -60,7 +62,7 @@ namespace ProposalStudio.Controllers
         }
 
         [HttpGet("{id}")]
-        [Authorize] 
+        [Authorize]
         public async Task<IActionResult> GetProduct(Guid id)
         {
             var product = await (
@@ -120,7 +122,7 @@ namespace ProposalStudio.Controllers
         }
 
         [HttpGet("test-image/{id}")]
-        [AllowAnonymous] // Optional: Let anyone see the test image endpoint, or remove this to secure it
+        [AllowAnonymous]
         public IActionResult TestImage(Guid id)
         {
             var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images/products", $"{id}.png");
@@ -133,20 +135,57 @@ namespace ProposalStudio.Controllers
         }
 
         // ------------------------------------------------------------------
-        // NEW: Enforcing the "Edit catalog" Admin-only rule from your matrix
+        // PATCH: api/products/{id} (Admin Only)
         // ------------------------------------------------------------------
 
-        [HttpPut("{id}")]
-        [Authorize] // <--- ONLY Admins can edit the catalog
-        public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] object updateRequest) // Replace 'object' with your actual DTO class
+        [HttpPatch("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> PatchProduct(Guid id, [FromBody] JsonPatchDocument<Product> patchDoc)
         {
-            // var product = await _context.Products.FindAsync(id);
-            // if (product == null) return NotFound();
-            // 
-            // Update logic here...
-            // await _context.SaveChangesAsync();
+            if (patchDoc == null)
+            {
+                return BadRequest("Patch document is null.");
+            }
 
-            return Ok(new { message = "Product updated successfully (Admin Only)" });
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            patchDoc.ApplyTo(product, ModelState);
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            product.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Product updated successfully via Patch (Admin Only)" });
+        }
+
+        // ------------------------------------------------------------------
+        // DELETE: api/products/{id} (Admin Only)
+        // ------------------------------------------------------------------
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteProduct(Guid id)
+        {
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            _context.Products.Remove(product);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
     }
 }

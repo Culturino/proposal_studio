@@ -98,22 +98,25 @@ namespace ProposalStudio.Controllers
                 return NotFound();
             }
 
-            if (!string.IsNullOrWhiteSpace(request.Name))
+            if (request.Name != null)
             {
-                client.Name = request.Name.Trim();
+                if (!string.IsNullOrWhiteSpace(request.Name))
+                {
+                    client.Name = request.Name.Trim();
+                }
             }
 
-            if (request.EmailSet)
+            if (request.Email != null)
             {
                 client.Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
             }
 
-            if (request.PhoneSet)
+            if (request.Phone != null)
             {
                 client.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
             }
 
-            if (request.NotesSet)
+            if (request.Notes != null)
             {
                 client.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
             }
@@ -123,6 +126,24 @@ namespace ProposalStudio.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(client);
+        }
+
+        // DELETE: api/clients/{id}
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteClient(Guid id)
+        {
+            var client = await _context.Clients
+                .FirstOrDefaultAsync(c => c.Id == id);
+
+            if (client == null)
+            {
+                return NotFound();
+            }
+
+            _context.Clients.Remove(client);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
         }
     }
 
@@ -145,14 +166,8 @@ namespace ProposalStudio.Controllers
 
         public string? Email { get; set; }
 
-        public bool EmailSet { get; set; }
-
         public string? Phone { get; set; }
 
-        public bool PhoneSet { get; set; }
-
         public string? Notes { get; set; }
-
-        public bool NotesSet { get; set; }
     }
 }

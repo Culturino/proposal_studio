@@ -45,7 +45,7 @@
     "ContainingType": "ProposalStudio.Controllers.AddonsController",
     "Method": "UpdateAddon",
     "RelativePath": "api/addons/{id}",
-    "HttpMethod": "PUT",
+    "HttpMethod": "PATCH",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -56,7 +56,7 @@
       },
       {
         "Name": "request",
-        "Type": "ProposalStudio.Models.Addon",
+        "Type": "ProposalStudio.Controllers.UpdateAddonRequest",
         "IsRequired": true
       }
     ],
@@ -106,9 +106,62 @@
   },
   {
     "ContainingType": "ProposalStudio.Controllers.BrandsController",
+    "Method": "CreateBrand",
+    "RelativePath": "api/Brands",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.CreateBrandRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BrandsController",
     "Method": "GetBrand",
     "RelativePath": "api/Brands/{id}",
     "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BrandsController",
+    "Method": "UpdateBrand",
+    "RelativePath": "api/Brands/{id}",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.UpdateBrandRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BrandsController",
+    "Method": "DeleteBrand",
+    "RelativePath": "api/Brands/{id}",
+    "HttpMethod": "DELETE",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -142,6 +195,22 @@
   },
   {
     "ContainingType": "ProposalStudio.Controllers.BusinessesController",
+    "Method": "CreateBusiness",
+    "RelativePath": "api/Businesses",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.CreateBusinessRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BusinessesController",
     "Method": "GetBusiness",
     "RelativePath": "api/Businesses/{id}",
     "HttpMethod": "GET",
@@ -165,6 +234,43 @@
         "StatusCode": 200
       }
     ]
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BusinessesController",
+    "Method": "UpdateBusiness",
+    "RelativePath": "api/Businesses/{id}",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.UpdateBusinessRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BusinessesController",
+    "Method": "DeleteBusiness",
+    "RelativePath": "api/Businesses/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
   },
   {
     "ContainingType": "ProposalStudio.Controllers.ClientsController",
@@ -230,6 +336,22 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "ProposalStudio.Controllers.ClientsController",
+    "Method": "DeleteClient",
+    "RelativePath": "api/Clients/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "ProposalStudio.Controllers.ProductsController",
     "Method": "GetProducts",
     "RelativePath": "api/Products",
@@ -257,9 +379,9 @@
   },
   {
     "ContainingType": "ProposalStudio.Controllers.ProductsController",
-    "Method": "UpdateProduct",
+    "Method": "PatchProduct",
     "RelativePath": "api/Products/{id}",
-    "HttpMethod": "PUT",
+    "HttpMethod": "PATCH",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -269,8 +391,24 @@
         "IsRequired": true
       },
       {
-        "Name": "updateRequest",
-        "Type": "System.Object",
+        "Name": "patchDoc",
+        "Type": "Microsoft.AspNetCore.JsonPatch.Operations.Operation[]",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProductsController",
+    "Method": "DeleteProduct",
+    "RelativePath": "api/Products/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
         "IsRequired": true
       }
     ],
@@ -339,6 +477,43 @@
     "Method": "GetProposal",
     "RelativePath": "api/Proposals/{id}",
     "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "UpdateProposal",
+    "RelativePath": "api/Proposals/{id}",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.UpdateProposalRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "DeleteProposal",
+    "RelativePath": "api/Proposals/{id}",
+    "HttpMethod": "DELETE",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -433,7 +608,7 @@
     "ContainingType": "ProposalStudio.Controllers.TemplateController",
     "Method": "UpdateTemplate",
     "RelativePath": "api/templates/{id}",
-    "HttpMethod": "PUT",
+    "HttpMethod": "PATCH",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -444,7 +619,7 @@
       },
       {
         "Name": "request",
-        "Type": "ProposalStudio.Models.Template",
+        "Type": "ProposalStudio.Controllers.UpdateTemplateRequest",
         "IsRequired": true
       }
     ],
@@ -494,7 +669,7 @@
   },
   {
     "ContainingType": "ProposalStudio.Controllers.UserController",
-    "Method": "GetUsers",
+    "Method": "GetUser",
     "RelativePath": "api/users/{id}",
     "HttpMethod": "GET",
     "IsController": true,
@@ -512,7 +687,7 @@
     "ContainingType": "ProposalStudio.Controllers.UserController",
     "Method": "UpdateUser",
     "RelativePath": "api/users/{id}",
-    "HttpMethod": "PUT",
+    "HttpMethod": "PATCH",
     "IsController": true,
     "Order": 0,
     "Parameters": [
@@ -523,7 +698,7 @@
       },
       {
         "Name": "request",
-        "Type": "ProposalStudio.Models.User",
+        "Type": "ProposalStudio.Controllers.UpdateUserRequest",
         "IsRequired": true
       }
     ],

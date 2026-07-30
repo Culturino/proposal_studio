@@ -417,39 +417,91 @@ namespace ProposalStudio.Controllers
                 }
             });
         }
+
+        // PATCH: api/proposals/{id}
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateProposal(Guid id, [FromBody] UpdateProposalRequest request)
+        {
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            if (request.Status != null)
+            {
+                proposal.Status = request.Status;
+            }
+
+            if (request.ValidityDays.HasValue)
+            {
+                proposal.ValidityDays = request.ValidityDays.Value;
+                proposal.ExpiresAt = proposal.SentAt ?? proposal.CreatedAt;
+                proposal.ExpiresAt = proposal.ExpiresAt.Value.AddDays(request.ValidityDays.Value);
+            }
+
+            if (request.Currency != null && !string.IsNullOrWhiteSpace(request.Currency))
+            {
+                proposal.Currency = request.Currency.Trim();
+            }
+
+            if (request.AdvisorId.HasValue)
+            {
+                proposal.AdvisorId = request.AdvisorId.Value;
+            }
+
+            proposal.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(proposal);
+        }
+
+        // DELETE: api/proposals/{id}
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteProposal(Guid id)
+        {
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            _context.Proposals.Remove(proposal);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
     }
 
     public class CreateProposalRequest
     {
         public Guid ClientId { get; set; }
-
         public Guid? AdvisorId { get; set; }
-
         public string Currency { get; set; } = "AED";
-
         public string VatMode { get; set; } = "line";
-
         public int ValidityDays { get; set; } = 14;
     }
 
     public class UpsertProposalItemRequest
     {
         public Guid ProductId { get; set; }
-
         public string? Finish { get; set; }
-
         public int Qty { get; set; } = 1;
-
         public decimal? UnitPrice { get; set; }
-
         public decimal? PriceOverride { get; set; }
-
         public string[]? Included { get; set; }
-
         public string[]? Excluded { get; set; }
-
         public string? AddonsJson { get; set; }
     }
 
-
+    public class UpdateProposalRequest
+    {
+        public string? Status { get; set; }
+        public int? ValidityDays { get; set; }
+        public string? Currency { get; set; }
+        public Guid? AdvisorId { get; set; }
+    }
 }

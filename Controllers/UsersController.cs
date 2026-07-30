@@ -37,7 +37,7 @@ namespace ProposalStudio.Controllers
 
         // GET: api/users/{id}
         [HttpGet("{id}")]
-        public async Task<IActionResult> GetUsers(Guid id)
+        public async Task<IActionResult> GetUser(Guid id)
         {
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Id == id);
@@ -54,6 +54,7 @@ namespace ProposalStudio.Controllers
         {
             user.Id = Guid.NewGuid();
             user.CreatedAt = DateTimeOffset.UtcNow;
+            user.UpdatedAt = DateTimeOffset.UtcNow; // Ensure this exists on model
             user.Active = true;
 
             _context.Users.Add(user);
@@ -62,19 +63,36 @@ namespace ProposalStudio.Controllers
             return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
         }
 
-        // PUT: api/users/{id}
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateUser(Guid id, User request)
+        // PATCH: api/users/{id}
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
 
             if (user == null)
                 return NotFound();
 
-            user.Name = request.Name;
-            user.Email = request.Email;
-            user.Role = request.Role;
-            user.Active = request.Active;
+            if (request.Name != null && !string.IsNullOrWhiteSpace(request.Name))
+            {
+                user.Name = request.Name.Trim();
+            }
+
+            if (request.Email != null && !string.IsNullOrWhiteSpace(request.Email))
+            {
+                user.Email = request.Email.Trim().ToLower();
+            }
+
+            if (request.Role != null && !string.IsNullOrWhiteSpace(request.Role))
+            {
+                user.Role = request.Role;
+            }
+
+            if (request.Active.HasValue)
+            {
+                user.Active = request.Active.Value;
+            }
+
+            user.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _context.SaveChangesAsync();
 
@@ -95,5 +113,13 @@ namespace ProposalStudio.Controllers
 
             return NoContent();
         }
+    }
+
+    public class UpdateUserRequest
+    {
+        public string? Name { get; set; }
+        public string? Email { get; set; }
+        public string? Role { get; set; }
+        public bool? Active { get; set; }
     }
 }

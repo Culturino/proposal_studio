@@ -16,7 +16,6 @@ namespace ProposalStudio.Controllers
             _context = context;
         }
 
-        // GET: api/templates
         [HttpGet]
         public async Task<IActionResult> GetAddons()
         {
@@ -31,14 +30,12 @@ namespace ProposalStudio.Controllers
                     a.Active,
                     a.CreatedAt,
                     a.UpdatedAt
- 
                 })
                 .ToListAsync();
 
             return Ok(addons);
         }
 
-        // GET: api/addon/{id}
         [HttpGet("{id}")]
         public async Task<IActionResult> GetAddon(Guid id)
         {
@@ -51,12 +48,12 @@ namespace ProposalStudio.Controllers
             return Ok(addon);
         }
 
-        // POST: api/templates
         [HttpPost]
         public async Task<IActionResult> CreateAddon(Addon addon)
         {
             addon.Id = Guid.NewGuid();
             addon.CreatedAt = DateTimeOffset.UtcNow;
+            addon.UpdatedAt = DateTimeOffset.UtcNow;
             addon.Active = true;
 
             _context.Addons.Add(addon);
@@ -65,26 +62,47 @@ namespace ProposalStudio.Controllers
             return CreatedAtAction(nameof(GetAddon), new { id = addon.Id }, addon);
         }
 
-        // PUT: api/addon/{id}
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateAddon(Guid id, Addon request)
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateAddon(Guid id, [FromBody] UpdateAddonRequest request)
         {
             var addon = await _context.Addons.FirstOrDefaultAsync(a => a.Id == id);
 
             if (addon == null)
                 return NotFound();
 
-            addon.Name = request.Name;
-            addon.Amount = request.Amount;
+            if (request.Name != null)
+            {
+                if (!string.IsNullOrWhiteSpace(request.Name))
+                {
+                    addon.Name = request.Name.Trim();
+                }
+            }
 
-            addon.Active = request.Active;
+            if (request.Amount.HasValue)
+            {
+                addon.Amount = request.Amount.Value;
+            }
+
+            if (request.Currency != null)
+            {
+                if (!string.IsNullOrWhiteSpace(request.Currency))
+                {
+                    addon.Currency = request.Currency.Trim();
+                }
+            }
+
+            if (request.Active.HasValue)
+            {
+                addon.Active = request.Active.Value;
+            }
+
+            addon.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _context.SaveChangesAsync();
 
             return Ok(addon);
         }
 
-        // DELETE: api/addon/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteAddon(Guid id)
         {
@@ -98,5 +116,13 @@ namespace ProposalStudio.Controllers
 
             return NoContent();
         }
+    }
+
+    public class UpdateAddonRequest
+    {
+        public string? Name { get; set; }
+        public decimal? Amount { get; set; }
+        public string? Currency { get; set; }
+        public bool? Active { get; set; }
     }
 }
