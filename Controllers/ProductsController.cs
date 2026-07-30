@@ -121,6 +121,27 @@ namespace ProposalStudio.Controllers
             return Ok(product.Finishes ?? Array.Empty<string>());
         }
 
+        // ------------------------------------------------------------------
+        // GET IMAGE: api/products/{id}/image (Public)
+        // ------------------------------------------------------------------
+
+        [HttpGet("{id}/image")]
+        [AllowAnonymous]
+        public IActionResult GetProductImage(Guid id)
+        {
+            var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot/images/products", $"{id}.png");
+
+            if (!System.IO.File.Exists(path))
+            {
+                return NotFound("Image not found");
+            }
+
+            // Cache for 1 hour to speed up loading
+            Response.Headers.Append("Cache-Control", "public, max-age=3600");
+
+            return PhysicalFile(path, "image/png");
+        }
+
         [HttpGet("test-image/{id}")]
         [AllowAnonymous]
         public IActionResult TestImage(Guid id)

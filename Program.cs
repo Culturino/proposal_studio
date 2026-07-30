@@ -104,7 +104,19 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        // Cache images for 1 hour
+        if (context.File.PhysicalPath.EndsWith(".png") ||
+            context.File.PhysicalPath.EndsWith(".jpg") ||
+            context.File.PhysicalPath.EndsWith(".jpeg"))
+        {
+            context.Context.Response.Headers.Append("Cache-Control", "public, max-age=3600");
+        }
+    }
+});
 
 app.UseRouting();
 app.UseCors("AllowFrontend");
