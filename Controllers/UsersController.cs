@@ -1,7 +1,9 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using System.Security.Claims;
 
 namespace ProposalStudio.Controllers
 {
@@ -54,7 +56,7 @@ namespace ProposalStudio.Controllers
         {
             user.Id = Guid.NewGuid();
             user.CreatedAt = DateTimeOffset.UtcNow;
-            user.UpdatedAt = DateTimeOffset.UtcNow; // Ensure this exists on model
+            user.UpdatedAt = DateTimeOffset.UtcNow;
             user.Active = true;
 
             _context.Users.Add(user);
@@ -99,6 +101,37 @@ namespace ProposalStudio.Controllers
             return Ok(user);
         }
 
+        // PATCH: api/users/{id}/password
+        [HttpPatch("{id}/password")]
+        [Authorize]
+        public async Task<IActionResult> UpdatePassword(Guid id, [FromBody] UpdatePasswordRequest request)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            // Security Check: Ensure the caller is either an Admin OR updating their own password
+            var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            var callerRole = User.FindFirst(ClaimTypes.Role)?.Value;
+
+            if (callerId != id.ToString() && callerRole != "admin")
+            {
+                return Forbid();
+            }
+
+            // Hash the password using BCrypt
+            var hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+
+            user.PasswordHash = hashedPassword;
+            user.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Password updated successfully" });
+        }
+
         // DELETE: api/users/{id}
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteUser(Guid id)
@@ -121,5 +154,10 @@ namespace ProposalStudio.Controllers
         public string? Email { get; set; }
         public string? Role { get; set; }
         public bool? Active { get; set; }
+    }
+
+    public class UpdatePasswordRequest
+    {
+        public string NewPassword { get; set; } = string.Empty;
     }
 }

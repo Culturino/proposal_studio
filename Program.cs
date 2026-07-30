@@ -17,7 +17,36 @@ builder.Services.AddControllers().AddNewtonsoftJson();
 // ------------------------------------------------
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+// -------- HERE IS THE FIX FOR SWAGGER AUTH --------
+builder.Services.AddSwaggerGen(c =>
+{
+    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "Bearer",
+        BearerFormat = "JWT",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Description = "Enter your JWT token"
+    });
+
+    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Id = "Bearer",
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                }
+            },
+            new List<string>()
+        }
+    });
+});
+// --------------------------------------------------
 
 // CORS (allow frontend to call backend)
 builder.Services.AddCors(options =>

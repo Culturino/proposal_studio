@@ -719,5 +719,26 @@
       }
     ],
     "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.UserController",
+    "Method": "UpdatePassword",
+    "RelativePath": "api/users/{id}/password",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.UpdatePasswordRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
   }
 ]
