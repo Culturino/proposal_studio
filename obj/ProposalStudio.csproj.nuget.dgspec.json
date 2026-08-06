@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\ACER\\Desktop\\inter\\ProposalStudio\\ProposalStudio.csproj": {}
+    "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj": {}
   },
   "projects": {
-    "C:\\Users\\ACER\\Desktop\\inter\\ProposalStudio\\ProposalStudio.csproj": {
+    "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\ACER\\Desktop\\inter\\ProposalStudio\\ProposalStudio.csproj",
+        "projectUniqueName": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj",
         "projectName": "ProposalStudio",
-        "projectPath": "C:\\Users\\ACER\\Desktop\\inter\\ProposalStudio\\ProposalStudio.csproj",
+        "projectPath": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj",
         "packagesPath": "C:\\Users\\ACER\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\ACER\\Desktop\\inter\\ProposalStudio\\obj\\",
+        "outputPath": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -82,6 +82,10 @@
             "Npgsql.EntityFrameworkCore.PostgreSQL": {
               "target": "Package",
               "version": "[8.0.11, )"
+            },
+            "QuestPDF": {
+              "target": "Package",
+              "version": "[2024.12.3, )"
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",

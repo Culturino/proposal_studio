@@ -1,9 +1,10 @@
-using Microsoft.EntityFrameworkCore;
-using ProposalStudio.Data;
-
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using ProposalStudio.Data;
+using ProposalStudio.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,13 +13,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// -------- HERE IS THE FIX FOR JSON PATCH --------
 builder.Services.AddControllers().AddNewtonsoftJson();
-// ------------------------------------------------
+builder.Services.AddScoped<PricingGovernance>();
+builder.Services.AddSingleton<ProposalPdfService>();
 
 builder.Services.AddEndpointsApiExplorer();
-
-// -------- HERE IS THE FIX FOR SWAGGER AUTH --------
 builder.Services.AddSwaggerGen(c =>
 {
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
@@ -46,9 +45,7 @@ builder.Services.AddSwaggerGen(c =>
         }
     });
 });
-// --------------------------------------------------
 
-// CORS (allow frontend to call backend)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -60,11 +57,8 @@ builder.Services.AddCors(options =>
     });
 });
 
-
-// ... [Existing DbContext and CORS Setup] ...
-
-// Add JWT Authentication
-var jwtKey = builder.Configuration["JwtSettings:SecretKey"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong";
+var jwtKey = builder.Configuration["JwtSettings:SecretKey"]
+    ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong";
 
 builder.Services.AddAuthentication(options =>
 {
@@ -73,24 +67,44 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false; // Set to true in production
+    options.RequireHttpsMetadata = false;
     options.SaveToken = true;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-        ValidateIssuer = false, // Set to true if you specify an issuer
+        ValidateIssuer = false,
         ValidateAudience = false,
-        RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role" // Important for ASP.NET to map roles
+        RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
     };
 });
 
-builder.Services.AddAuthorization(); // Make sure this is added before Build()
-
+// Require auth by default; opt out with [AllowAnonymous]
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
 
 // -------------------- BUILD APP --------------------
 
 var app = builder.Build();
+
+// Seed Phase 1 catalog / users / governance
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    try
+    {
+        await DbSeeder.SeedAsync(db);
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbSeeder");
+        logger.LogError(ex, "Database seed failed — API will still start");
+    }
+}
 
 // -------------------- PIPELINE --------------------
 
@@ -100,31 +114,47 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// IMPORTANT: order matters
-
 app.UseHttpsRedirection();
+
+// Serve wwwroot (product images at /images/products/{id}.png) without auth —
+// middleware runs before UseAuthentication so catalog images load for login prefetch.
+Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "images", "products"));
+Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "pdfs"));
 
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = context =>
     {
-        // Cache images for 1 hour
-        if (context.File.PhysicalPath.EndsWith(".png") ||
-            context.File.PhysicalPath.EndsWith(".jpg") ||
-            context.File.PhysicalPath.EndsWith(".jpeg"))
+        var path = context.File.PhysicalPath ?? "";
+        if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+            path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            context.Context.Response.Headers.Append("Cache-Control", "public, max-age=3600");
+            // Long cache — frontend also prefetches these right after login
+            context.Context.Response.Headers.Append("Cache-Control", "public, max-age=86400");
+            context.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
         }
     }
 });
 
+// Missing /images or /pdfs must not fall through to the JWT FallbackPolicy
+// (browser <img> tags never send Authorization → would become 401 instead of 404).
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    if (path.StartsWithSegments("/images") || path.StartsWithSegments("/pdfs"))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 app.UseRouting();
 app.UseCors("AllowFrontend");
-
-app.UseAuthentication(); // <-- Added for JWT
-
+app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();

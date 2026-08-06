@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "lw9/ld/JFg0=",
+  "dgSpecHash": "bw/W0ZntB9c=",
   "success": true,
-  "projectFilePath": "C:\\Users\\ACER\\Desktop\\inter\\ProposalStudio\\ProposalStudio.csproj",
+  "projectFilePath": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\ACER\\.nuget\\packages\\bcrypt.net-next\\4.2.0\\bcrypt.net-next.4.2.0.nupkg.sha512",
     "C:\\Users\\ACER\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
@@ -45,6 +45,7 @@
     "C:\\Users\\ACER\\.nuget\\packages\\newtonsoft.json.bson\\1.0.2\\newtonsoft.json.bson.1.0.2.nupkg.sha512",
     "C:\\Users\\ACER\\.nuget\\packages\\npgsql\\8.0.6\\npgsql.8.0.6.nupkg.sha512",
     "C:\\Users\\ACER\\.nuget\\packages\\npgsql.entityframeworkcore.postgresql\\8.0.11\\npgsql.entityframeworkcore.postgresql.8.0.11.nupkg.sha512",
+    "C:\\Users\\ACER\\.nuget\\packages\\questpdf\\2024.12.3\\questpdf.2024.12.3.nupkg.sha512",
     "C:\\Users\\ACER\\.nuget\\packages\\swashbuckle.aspnetcore\\6.6.2\\swashbuckle.aspnetcore.6.6.2.nupkg.sha512",
     "C:\\Users\\ACER\\.nuget\\packages\\swashbuckle.aspnetcore.swagger\\6.6.2\\swashbuckle.aspnetcore.swagger.6.6.2.nupkg.sha512",
     "C:\\Users\\ACER\\.nuget\\packages\\swashbuckle.aspnetcore.swaggergen\\6.6.2\\swashbuckle.aspnetcore.swaggergen.6.6.2.nupkg.sha512",

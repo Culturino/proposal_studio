@@ -9,6 +9,7 @@ namespace ProposalStudio.Controllers
 {
     [ApiController]
     [Route("api/users")]
+    [Authorize]
     public class UserController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -18,11 +19,13 @@ namespace ProposalStudio.Controllers
             _context = context;
         }
 
-        // GET: api/users
+        // GET: api/users — advisors listed for builder picker; full manage is Admin UI
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
+            // Hide deactivated users from the admin directory (soft-deleted with proposal history)
             var users = await _context.Users
+                .Where(u => u.Active)
                 .Select(u => new
                 {
                     u.Id,
@@ -47,26 +50,68 @@ namespace ProposalStudio.Controllers
             if (user == null)
                 return NotFound();
 
-            return Ok(user);
+            return Ok(new
+            {
+                user.Id,
+                user.Name,
+                user.Email,
+                user.Phone,
+                user.Role,
+                user.Active,
+                user.BusinessId,
+                user.CreatedAt
+            });
         }
 
-        // POST: api/users
+        // POST: api/users (Admin)
         [HttpPost]
-        public async Task<IActionResult> CreateUser(User user)
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
         {
-            user.Id = Guid.NewGuid();
-            user.CreatedAt = DateTimeOffset.UtcNow;
-            user.UpdatedAt = DateTimeOffset.UtcNow;
-            user.Active = true;
+            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return BadRequest("Email and password are required.");
+            }
+
+            var business = await _context.Businesses
+                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
+
+            if (business == null)
+            {
+                return BadRequest("Default business was not found.");
+            }
+
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = request.BusinessId ?? business.Id,
+                Name = request.Name?.Trim() ?? request.Email.Trim(),
+                Email = request.Email.Trim().ToLower(),
+                Phone = request.Phone,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+                Role = string.IsNullOrWhiteSpace(request.Role) ? "advisor" : request.Role.Trim().ToLower(),
+                Active = true,
+                TwoFactorEnabled = false,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetUsers), new { id = user.Id }, user);
+            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new
+            {
+                user.Id,
+                user.Name,
+                user.Email,
+                user.Role,
+                user.Active
+            });
         }
 
-        // PATCH: api/users/{id}
+        // PATCH: api/users/{id} (Admin)
         [HttpPatch("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest request)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
@@ -116,7 +161,7 @@ namespace ProposalStudio.Controllers
             var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var callerRole = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (callerId != id.ToString() && callerRole != "admin")
+            if (callerId != id.ToString() && callerRole != "Admin")
             {
                 return Forbid();
             }
@@ -132,8 +177,9 @@ namespace ProposalStudio.Controllers
             return Ok(new { message = "Password updated successfully" });
         }
 
-        // DELETE: api/users/{id}
+        // DELETE: api/users/{id} (Admin)
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteUser(Guid id)
         {
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
@@ -141,11 +187,43 @@ namespace ProposalStudio.Controllers
             if (user == null)
                 return NotFound();
 
+            var callerId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var cid)
+                ? cid
+                : (Guid?)null;
+            if (callerId == id)
+                return BadRequest("You cannot delete your own account.");
+
+            // Proposals / clients may reference this user — deactivate instead of hard delete
+            var hasProposals = await _context.Proposals.AnyAsync(p => p.AdvisorId == id);
+            var createdClients = await _context.Clients.AnyAsync(c => c.CreatedBy == id);
+
+            if (hasProposals || createdClients)
+            {
+                user.Active = false;
+                user.UpdatedAt = DateTimeOffset.UtcNow;
+                await _context.SaveChangesAsync();
+                return Ok(new
+                {
+                    message = "User deactivated because they still own proposals or clients.",
+                    softDeleted = true
+                });
+            }
+
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
+    }
+
+    public class CreateUserRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public string? Role { get; set; }
+        public Guid? BusinessId { get; set; }
     }
 
     public class UpdateUserRequest

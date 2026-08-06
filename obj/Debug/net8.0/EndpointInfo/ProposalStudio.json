@@ -140,6 +140,36 @@
         }
       }
     },
+    "/api/analytics/summary": {
+      "get": {
+        "tags": [
+          "Analytics"
+        ],
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/Auth/login": {
       "post": {
         "tags": [
@@ -169,6 +199,18 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -624,11 +666,114 @@
         }
       }
     },
+    "/api/governance": {
+      "get": {
+        "tags": [
+          "Governance"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Governance"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGovernanceRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGovernanceRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGovernanceRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateGovernanceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/Products": {
       "get": {
         "tags": [
           "Products"
         ],
+        "parameters": [
+          {
+            "name": "brand",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Products"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProductRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -677,34 +822,22 @@
           "content": {
             "application/json-patch+json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Operation"
-                }
+                "$ref": "#/components/schemas/UpdateProductRequest"
               }
             },
             "application/json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Operation"
-                }
+                "$ref": "#/components/schemas/UpdateProductRequest"
               }
             },
             "text/json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Operation"
-                }
+                "$ref": "#/components/schemas/UpdateProductRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Operation"
-                }
+                "$ref": "#/components/schemas/UpdateProductRequest"
               }
             }
           }
@@ -783,33 +916,34 @@
         }
       }
     },
-    "/api/Products/test-image/{id}": {
-      "get": {
-        "tags": [
-          "Products"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
     "/api/Proposals": {
       "get": {
         "tags": [
           "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "advisor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -1011,6 +1145,213 @@
         }
       }
     },
+    "/api/Proposals/{id}/generate-pdf": {
+      "post": {
+        "tags": [
+          "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Proposals/{id}/pdf": {
+      "get": {
+        "tags": [
+          "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Proposals/{id}/send": {
+      "post": {
+        "tags": [
+          "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Proposals/{id}/share": {
+      "post": {
+        "tags": [
+          "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateShareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/Proposals/{id}/builder": {
+      "get": {
+        "tags": [
+          "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/p/{token}": {
+      "get": {
+        "tags": [
+          "PublicShare"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/p/{token}/event": {
+      "post": {
+        "tags": [
+          "PublicShare"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicEventRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicEventRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicEventRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublicEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/templates": {
       "get": {
         "tags": [
@@ -1165,22 +1506,22 @@
           "content": {
             "application/json-patch+json": {
               "schema": {
-                "$ref": "#/components/schemas/User"
+                "$ref": "#/components/schemas/CreateUserRequest"
               }
             },
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/User"
+                "$ref": "#/components/schemas/CreateUserRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/User"
+                "$ref": "#/components/schemas/CreateUserRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/User"
+                "$ref": "#/components/schemas/CreateUserRequest"
               }
             }
           }
@@ -1476,6 +1817,71 @@
         },
         "additionalProperties": false
       },
+      "CreateProductRequest": {
+        "type": "object",
+        "properties": {
+          "brandId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "nullable": true
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "blurb": {
+            "type": "string",
+            "nullable": true
+          },
+          "tagline": {
+            "type": "string",
+            "nullable": true
+          },
+          "finishes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "defaultIncludes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "defaultExcludes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "availabilityNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateProposalRequest": {
         "type": "object",
         "properties": {
@@ -1484,6 +1890,11 @@
             "format": "uuid"
           },
           "advisorId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "templateId": {
             "type": "string",
             "format": "uuid",
             "nullable": true
@@ -1503,6 +1914,52 @@
         },
         "additionalProperties": false
       },
+      "CreateShareRequest": {
+        "type": "object",
+        "properties": {
+          "expiryDays": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "forceNew": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "password": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string",
+            "nullable": true
+          },
+          "businessId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "LoginRequest": {
         "type": "object",
         "properties": {
@@ -1517,42 +1974,19 @@
         },
         "additionalProperties": false
       },
-      "Operation": {
+      "PublicEventRequest": {
         "type": "object",
         "properties": {
-          "operationType": {
-            "$ref": "#/components/schemas/OperationType"
-          },
-          "path": {
+          "type": {
             "type": "string",
             "nullable": true
           },
-          "op": {
+          "section": {
             "type": "string",
-            "nullable": true
-          },
-          "from": {
-            "type": "string",
-            "nullable": true
-          },
-          "value": {
             "nullable": true
           }
         },
         "additionalProperties": false
-      },
-      "OperationType": {
-        "enum": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6
-        ],
-        "type": "integer",
-        "format": "int32"
       },
       "Template": {
         "type": "object",
@@ -1684,10 +2118,101 @@
         },
         "additionalProperties": false
       },
+      "UpdateGovernanceRequest": {
+        "type": "object",
+        "properties": {
+          "discountFloorPercent": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "highValueThreshold": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "vatDefaultMode": {
+            "type": "string",
+            "nullable": true
+          },
+          "allowPublicPrices": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdatePasswordRequest": {
         "type": "object",
         "properties": {
           "newPassword": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateProductRequest": {
+        "type": "object",
+        "properties": {
+          "brandId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "model": {
+            "type": "string",
+            "nullable": true
+          },
+          "dimensions": {
+            "nullable": true
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "blurb": {
+            "type": "string",
+            "nullable": true
+          },
+          "tagline": {
+            "type": "string",
+            "nullable": true
+          },
+          "finishes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "defaultIncludes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "defaultExcludes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "availabilityNote": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
             "type": "string",
             "nullable": true
           }
@@ -1710,7 +2235,21 @@
             "type": "string",
             "nullable": true
           },
+          "vatMode": {
+            "type": "string",
+            "nullable": true
+          },
           "advisorId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "clientId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "templateId": {
             "type": "string",
             "format": "uuid",
             "nullable": true
@@ -1805,54 +2344,6 @@
           "addonsJson": {
             "type": "string",
             "nullable": true
-          }
-        },
-        "additionalProperties": false
-      },
-      "User": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "businessId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string",
-            "nullable": true
-          },
-          "email": {
-            "type": "string",
-            "nullable": true
-          },
-          "phone": {
-            "type": "string",
-            "nullable": true
-          },
-          "passwordHash": {
-            "type": "string",
-            "nullable": true
-          },
-          "role": {
-            "type": "string",
-            "nullable": true
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "twoFactorEnabled": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
           }
         },
         "additionalProperties": false

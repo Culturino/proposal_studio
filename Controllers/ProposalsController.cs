@@ -1,66 +1,100 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using System.Security.Claims;
+using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ProposalsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly PricingGovernance _pricing;
+        private readonly ProposalPdfService _pdf;
 
-        public ProposalsController(AppDbContext context)
+        public ProposalsController(
+            AppDbContext context,
+            PricingGovernance pricing,
+            ProposalPdfService pdf)
         {
             _context = context;
+            _pricing = pricing;
+            _pdf = pdf;
         }
 
+        // GET: api/proposals?status=&advisor=&q=
         [HttpGet]
-        public async Task<IActionResult> GetProposals()
+        public async Task<IActionResult> GetProposals(
+            [FromQuery] string? status = null,
+            [FromQuery] Guid? advisor = null,
+            [FromQuery] string? q = null)
         {
-            var proposals = await (
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var userId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid)
+                ? uid
+                : (Guid?)null;
+
+            var query =
                 from proposal in _context.Proposals
-                join client in _context.Clients
-                    on proposal.ClientId equals client.Id
-                join advisor in _context.Users
-                    on proposal.AdvisorId equals advisor.Id
-                join template in _context.Templates
-                    on proposal.TemplateId equals template.Id
-                orderby proposal.CreatedAt descending
-                select new
+                join client in _context.Clients on proposal.ClientId equals client.Id
+                join adv in _context.Users on proposal.AdvisorId equals adv.Id
+                join template in _context.Templates on proposal.TemplateId equals template.Id
+                select new { proposal, client, adv, template };
+
+            // Managers & Admins see all; everyone else only their own
+            var canSeeAll = role is "Admin" or "Manager";
+            if (!canSeeAll && userId.HasValue)
+            {
+                query = query.Where(x => x.proposal.AdvisorId == userId.Value);
+            }
+            else if (canSeeAll && advisor.HasValue)
+            {
+                query = query.Where(x => x.proposal.AdvisorId == advisor.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                query = query.Where(x => x.proposal.Status == status);
+            }
+
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var term = q.Trim().ToLower();
+                query = query.Where(x =>
+                    x.proposal.Reference.ToLower().Contains(term) ||
+                    x.client.Name.ToLower().Contains(term));
+            }
+
+            var proposals = await query
+                .OrderByDescending(x => x.proposal.CreatedAt)
+                .Select(x => new
                 {
-                    proposal.Id,
-                    proposal.Reference,
-                    proposal.ReferenceNumber,
-                    proposal.Status,
-                    proposal.Currency,
-                    proposal.VatMode,
-                    proposal.ValidityDays,
-                    proposal.PriceTotal,
-                    proposal.CreatedAt,
-                    proposal.UpdatedAt,
-                    Client = new
-                    {
-                        client.Id,
-                        client.Name,
-                        client.Email,
-                        client.Phone
-                    },
-                    Advisor = new
-                    {
-                        advisor.Id,
-                        advisor.Name,
-                        advisor.Email
-                    },
-                    Template = new
-                    {
-                        template.Id,
-                        template.Name,
-                        template.Version
-                    }
-                }
-            ).ToListAsync();
+                    x.proposal.Id,
+                    x.proposal.Reference,
+                    x.proposal.ReferenceNumber,
+                    x.proposal.Status,
+                    x.proposal.Currency,
+                    x.proposal.VatMode,
+                    x.proposal.ValidityDays,
+                    x.proposal.PriceTotal,
+                    x.proposal.CreatedAt,
+                    x.proposal.UpdatedAt,
+                    x.proposal.PdfUrl,
+                    Client = new { x.client.Id, x.client.Name, x.client.Email, x.client.Phone },
+                    Advisor = new { x.adv.Id, x.adv.Name, x.adv.Email },
+                    Template = new { x.template.Id, x.template.Name, x.template.Version },
+                    Instrument = _context.ProposalItems
+                        .Where(i => i.ProposalId == x.proposal.Id)
+                        .Join(_context.Products, i => i.ProductId, p => p.Id, (i, p) => p.Model)
+                        .FirstOrDefault()
+                })
+                .ToListAsync();
 
             return Ok(proposals);
         }
@@ -68,14 +102,16 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetProposal(Guid id)
         {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
             var proposal = await (
                 from p in _context.Proposals
-                join client in _context.Clients
-                    on p.ClientId equals client.Id
-                join advisor in _context.Users
-                    on p.AdvisorId equals advisor.Id
-                join template in _context.Templates
-                    on p.TemplateId equals template.Id
+                join client in _context.Clients on p.ClientId equals client.Id
+                join advisor in _context.Users on p.AdvisorId equals advisor.Id
+                join template in _context.Templates on p.TemplateId equals template.Id
                 where p.Id == id
                 select new
                 {
@@ -93,27 +129,9 @@ namespace ProposalStudio.Controllers
                     p.SentAt,
                     p.ExpiresAt,
                     p.PdfUrl,
-                    Client = new
-                    {
-                        client.Id,
-                        client.Name,
-                        client.Email,
-                        client.Phone,
-                        client.Notes
-                    },
-                    Advisor = new
-                    {
-                        advisor.Id,
-                        advisor.Name,
-                        advisor.Email
-                    },
-                    Template = new
-                    {
-                        template.Id,
-                        template.Key,
-                        template.Name,
-                        template.Version
-                    },
+                    Client = new { client.Id, client.Name, client.Email, client.Phone, client.Notes },
+                    Advisor = new { advisor.Id, advisor.Name, advisor.Email },
+                    Template = new { template.Id, template.Key, template.Name, template.Version },
                     Items = _context.ProposalItems
                         .Where(i => i.ProposalId == p.Id)
                         .Select(i => new
@@ -159,49 +177,60 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Client was not found.");
             }
 
-            var template = await _context.Templates
-                .FirstOrDefaultAsync(t =>
+            Template? template = null;
+            if (request.TemplateId.HasValue)
+            {
+                template = await _context.Templates.FirstOrDefaultAsync(t =>
+                    t.Id == request.TemplateId.Value &&
                     t.BusinessId == business.Id &&
-                    t.Key == "piano_luxury" &&
                     t.Active);
+            }
+
+            template ??= await _context.Templates.FirstOrDefaultAsync(t =>
+                t.BusinessId == business.Id &&
+                t.Key == "piano_luxury" &&
+                t.Active);
 
             if (template == null)
             {
                 return BadRequest("Piano Luxury template was not found.");
             }
 
-            User? advisor;
+            var callerId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var cid)
+                ? cid
+                : (Guid?)null;
 
+            User? advisor = null;
             if (request.AdvisorId.HasValue)
             {
-                advisor = await _context.Users
-                    .FirstOrDefaultAsync(u =>
-                        u.Id == request.AdvisorId.Value &&
-                        u.BusinessId == business.Id &&
-                        u.Active);
+                advisor = await _context.Users.FirstOrDefaultAsync(u =>
+                    u.Id == request.AdvisorId.Value &&
+                    u.BusinessId == business.Id &&
+                    u.Active);
             }
-            else
+            else if (callerId.HasValue)
             {
-                advisor = await _context.Users
-                    .FirstOrDefaultAsync(u =>
-                        u.BusinessId == business.Id &&
-                        u.Active &&
-                        u.Role == "advisor");
+                advisor = await _context.Users.FirstOrDefaultAsync(u =>
+                    u.Id == callerId.Value && u.Active);
             }
+
+            advisor ??= await _context.Users.FirstOrDefaultAsync(u =>
+                u.BusinessId == business.Id && u.Active && u.Role == "advisor");
 
             if (advisor == null)
             {
                 return BadRequest("Advisor was not found.");
             }
 
+            var gov = await _pricing.GetForBusinessAsync(business.Id);
             var lastReferenceNumber = await _context.Proposals
                 .Where(p => p.BusinessId == business.Id)
                 .MaxAsync(p => (int?)p.ReferenceNumber);
 
             var nextReferenceNumber = (lastReferenceNumber ?? 1000) + 1;
             var reference = $"{business.ReferencePrefix}-{nextReferenceNumber}";
-
             var now = DateTimeOffset.UtcNow;
+            var validity = request.ValidityDays <= 0 ? 14 : request.ValidityDays;
 
             var proposal = new Proposal
             {
@@ -214,20 +243,21 @@ namespace ProposalStudio.Controllers
                 ClientId = client.Id,
                 AdvisorId = advisor.Id,
                 Currency = string.IsNullOrWhiteSpace(request.Currency) ? "AED" : request.Currency,
-                VatMode = string.IsNullOrWhiteSpace(request.VatMode) ? "line" : request.VatMode,
-                ValidityDays = request.ValidityDays <= 0 ? 14 : request.ValidityDays,
+                VatMode = string.IsNullOrWhiteSpace(request.VatMode)
+                    ? gov.VatDefaultMode
+                    : request.VatMode,
+                ValidityDays = validity,
                 Status = "draft",
                 PriceTotal = null,
                 CreatedAt = now,
                 UpdatedAt = now,
                 SentAt = null,
-                ExpiresAt = now.AddDays(request.ValidityDays <= 0 ? 14 : request.ValidityDays),
+                ExpiresAt = now.AddDays(validity),
                 Snapshot = null,
                 PdfUrl = null
             };
 
             _context.Proposals.Add(proposal);
-
             await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetProposal), new { id = proposal.Id }, new
@@ -249,9 +279,12 @@ namespace ProposalStudio.Controllers
         [HttpPut("{id}/item")]
         public async Task<IActionResult> UpsertProposalItem(Guid id, UpsertProposalItemRequest request)
         {
-            var proposal = await _context.Proposals
-                .FirstOrDefaultAsync(p => p.Id == id);
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
 
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
             if (proposal == null)
             {
                 return NotFound("Proposal was not found.");
@@ -276,6 +309,11 @@ namespace ProposalStudio.Controllers
                 .FirstOrDefaultAsync();
 
             var unitPrice = request.UnitPrice ?? catalogPrice?.Amount;
+            var offered = request.PriceOverride ?? unitPrice;
+
+            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
+            var belowFloor = _pricing.IsBelowFloor(offered, catalogPrice?.Amount, gov.DiscountFloorPercent);
+            var floor = _pricing.FloorUnitPrice(catalogPrice?.Amount, gov.DiscountFloorPercent);
 
             var existingItem = await _context.ProposalItems
                 .FirstOrDefaultAsync(i => i.ProposalId == proposal.Id);
@@ -295,11 +333,10 @@ namespace ProposalStudio.Controllers
                     PriceOverride = request.PriceOverride,
                     Included = request.Included ?? product.DefaultIncludes,
                     Excluded = request.Excluded ?? product.DefaultExcludes,
-                    Addons = System.Text.Json.JsonDocument.Parse(request.AddonsJson ?? "[]"),
+                    Addons = JsonDocument.Parse(request.AddonsJson ?? "[]"),
                     CreatedAt = now,
                     UpdatedAt = now
                 };
-
                 _context.ProposalItems.Add(existingItem);
             }
             else
@@ -311,7 +348,7 @@ namespace ProposalStudio.Controllers
                 existingItem.PriceOverride = request.PriceOverride;
                 existingItem.Included = request.Included ?? product.DefaultIncludes;
                 existingItem.Excluded = request.Excluded ?? product.DefaultExcludes;
-                existingItem.Addons = System.Text.Json.JsonDocument.Parse(request.AddonsJson ?? "[]");
+                existingItem.Addons = JsonDocument.Parse(request.AddonsJson ?? "[]");
                 existingItem.UpdatedAt = now;
             }
 
@@ -327,6 +364,15 @@ namespace ProposalStudio.Controllers
                 proposal.Reference,
                 proposal.Status,
                 proposal.PriceTotal,
+                Governance = new
+                {
+                    BelowFloor = belowFloor,
+                    FloorUnitPrice = floor,
+                    CatalogAmount = catalogPrice?.Amount,
+                    DiscountFloorPercent = gov.DiscountFloorPercent,
+                    HighValue = _pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold),
+                    gov.HighValueThreshold
+                },
                 Item = new
                 {
                     existingItem.Id,
@@ -347,28 +393,23 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}/preview")]
         public async Task<IActionResult> Preview(Guid id)
         {
-            var proposal = await _context.Proposals
-                .FirstOrDefaultAsync(p => p.Id == id);
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
 
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
             if (proposal == null)
             {
                 return NotFound();
             }
 
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
-
-            var client = await _context.Clients
-                .FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
-
-            var advisor = await _context.Users
-                .FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
-
-            var template = await _context.Templates
-                .FirstOrDefaultAsync(t => t.Id == proposal.TemplateId);
-
-            var item = await _context.ProposalItems
-                .FirstOrDefaultAsync(i => i.ProposalId == proposal.Id);
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
+            var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
+            var advisor = await _context.Users.FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
+            var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == proposal.TemplateId);
+            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == proposal.Id);
+            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
 
             if (item == null)
             {
@@ -379,20 +420,36 @@ namespace ProposalStudio.Controllers
                     Client = client,
                     Advisor = advisor,
                     Template = template,
-                    Item = (object?)null
+                    Item = (object?)null,
+                    Governance = new
+                    {
+                        BelowFloor = false,
+                        FloorUnitPrice = (decimal?)null,
+                        DiscountFloorPercent = gov.DiscountFloorPercent,
+                        HighValue = false,
+                        gov.HighValueThreshold
+                    }
                 });
             }
 
-            var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Id == item.ProductId);
-
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
             var brand = product == null
                 ? null
                 : await _context.Brands.FirstOrDefaultAsync(b => b.Id == product.BrandId);
-
             var category = product == null
                 ? null
                 : await _context.ProductCategories.FirstOrDefaultAsync(c => c.Id == product.CategoryId);
+
+            var catalogAmount = product == null
+                ? null
+                : await _context.Prices
+                    .Where(p => p.ProductId == product.Id && p.Currency == proposal.Currency)
+                    .OrderByDescending(p => p.ValidFrom)
+                    .Select(p => p.Amount)
+                    .FirstOrDefaultAsync();
+
+            var offered = item.PriceOverride ?? item.UnitPrice;
+            var belowFloor = _pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent);
 
             return Ok(new
             {
@@ -414,31 +471,358 @@ namespace ProposalStudio.Controllers
                     Product = product,
                     Brand = brand,
                     Category = category
+                },
+                Governance = new
+                {
+                    BelowFloor = belowFloor,
+                    FloorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
+                    CatalogAmount = catalogAmount,
+                    DiscountFloorPercent = gov.DiscountFloorPercent,
+                    HighValue = _pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold),
+                    gov.HighValueThreshold
                 }
             });
         }
 
-        // PATCH: api/proposals/{id}
-        [HttpPatch("{id}")]
-        public async Task<IActionResult> UpdateProposal(Guid id, [FromBody] UpdateProposalRequest request)
+        // POST: api/proposals/{id}/generate-pdf
+        [HttpPost("{id}/generate-pdf")]
+        public async Task<IActionResult> GeneratePdf(Guid id)
         {
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
 
+            var built = await BuildPdfModelAsync(id);
+            if (built == null)
+            {
+                return NotFound("Proposal or item was not found.");
+            }
+
+            var (proposal, model) = built.Value;
+
+            // Immutable snapshot so later catalog edits cannot change this PDF
+            proposal.Snapshot = ProposalPdfService.BuildSnapshot(model);
+
+            var bytes = _pdf.Generate(model);
+            var dir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "pdfs");
+            Directory.CreateDirectory(dir);
+
+            var safeClient = SanitizeFilePart(model.ClientName);
+            var safeModel = SanitizeFilePart(model.Model);
+            var fileName = $"{proposal.Reference}_{safeClient}_{safeModel}.pdf";
+            var path = Path.Combine(dir, fileName);
+            await System.IO.File.WriteAllBytesAsync(path, bytes);
+
+            proposal.PdfUrl = $"/pdfs/{fileName}";
+            proposal.UpdatedAt = DateTimeOffset.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                proposal.Id,
+                proposal.Reference,
+                pdfUrl = proposal.PdfUrl,
+                fileName,
+                message = "PDF generated and snapshot stored"
+            });
+        }
+
+        // GET: api/proposals/{id}/pdf
+        [HttpGet("{id}/pdf")]
+        public async Task<IActionResult> DownloadPdf(Guid id)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
             if (proposal == null)
             {
                 return NotFound();
             }
 
-            if (request.Status != null)
+            if (string.IsNullOrWhiteSpace(proposal.PdfUrl))
             {
-                proposal.Status = request.Status;
+                return NotFound("PDF has not been generated yet.");
+            }
+
+            var path = Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "wwwroot",
+                proposal.PdfUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+
+            if (!System.IO.File.Exists(path))
+            {
+                return NotFound("PDF file missing on disk.");
+            }
+
+            return PhysicalFile(path, "application/pdf", Path.GetFileName(path));
+        }
+
+        // POST: api/proposals/{id}/send — Phase 1: mark sent; block below-floor prices
+        [HttpPost("{id}/send")]
+        public async Task<IActionResult> Send(Guid id)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            if (proposal.Status != "draft" && proposal.Status != "sent")
+            {
+                return BadRequest($"Cannot send a proposal in status '{proposal.Status}'.");
+            }
+
+            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == id);
+            if (item == null)
+            {
+                return BadRequest("Add an instrument before sending.");
+            }
+
+            var catalogAmount = await _context.Prices
+                .Where(p => p.ProductId == item.ProductId && p.Currency == proposal.Currency)
+                .OrderByDescending(p => p.ValidFrom)
+                .Select(p => p.Amount)
+                .FirstOrDefaultAsync();
+
+            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
+            var offered = item.PriceOverride ?? item.UnitPrice;
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var canApprove = role is "Admin" or "Manager";
+
+            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove)
+            {
+                return BadRequest(new
+                {
+                    error = "below_floor",
+                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Manager approval is required before sending.",
+                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
+                    catalogAmount,
+                    offered
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(proposal.PdfUrl))
+            {
+                // Auto-generate PDF + snapshot on first send
+                var built = await BuildPdfModelAsync(id);
+                if (built != null)
+                {
+                    var (p, model) = built.Value;
+                    p.Snapshot = ProposalPdfService.BuildSnapshot(model);
+                    var bytes = _pdf.Generate(model);
+                    var dir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "pdfs");
+                    Directory.CreateDirectory(dir);
+                    var fileName = $"{p.Reference}_{SanitizeFilePart(model.ClientName)}_{SanitizeFilePart(model.Model)}.pdf";
+                    await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, fileName), bytes);
+                    p.PdfUrl = $"/pdfs/{fileName}";
+                }
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            proposal.Status = "sent";
+            proposal.SentAt = now;
+            proposal.ExpiresAt = now.AddDays(proposal.ValidityDays);
+            proposal.UpdatedAt = now;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                proposal.Id,
+                proposal.Reference,
+                proposal.Status,
+                proposal.SentAt,
+                proposal.ExpiresAt,
+                proposal.PdfUrl
+            });
+        }
+
+        // POST: api/proposals/{id}/share — create (or reuse) anonymous tracked link
+        [HttpPost("{id}/share")]
+        public async Task<IActionResult> CreateShareLink(Guid id, [FromBody] CreateShareRequest? request)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == id);
+            if (item == null)
+            {
+                return BadRequest("Add an instrument before sharing.");
+            }
+
+            var catalogAmount = await _context.Prices
+                .Where(p => p.ProductId == item.ProductId && p.Currency == proposal.Currency)
+                .OrderByDescending(p => p.ValidFrom)
+                .Select(p => p.Amount)
+                .FirstOrDefaultAsync();
+
+            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
+            var offered = item.PriceOverride ?? item.UnitPrice;
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var canApprove = role is "Admin" or "Manager";
+
+            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove)
+            {
+                return BadRequest(new
+                {
+                    error = "below_floor",
+                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Manager approval is required before sharing.",
+                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent)
+                });
+            }
+
+            var existing = await _context.ShareLinks
+                .Where(s => s.ProposalId == id && !s.Revoked)
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            // Reuse active non-expired link unless forceNew
+            if (existing != null &&
+                !(request?.ForceNew ?? false) &&
+                (!existing.ExpiresAt.HasValue || existing.ExpiresAt > DateTimeOffset.UtcNow))
+            {
+                return Ok(new
+                {
+                    existing.Token,
+                    existing.ExpiresAt,
+                    path = $"/p/{existing.Token}",
+                    reused = true
+                });
+            }
+
+            var days = request?.ExpiryDays is > 0 ? request.ExpiryDays.Value : proposal.ValidityDays;
+            if (days <= 0) days = 14;
+
+            var link = new ShareLink
+            {
+                Id = Guid.NewGuid(),
+                ProposalId = id,
+                Token = ShareTokenFactory.Create(),
+                CreatedAt = DateTimeOffset.UtcNow,
+                ExpiresAt = DateTimeOffset.UtcNow.AddDays(days),
+                Revoked = false
+            };
+
+            _context.ShareLinks.Add(link);
+
+            // Creating a share link implies the proposal left pure draft
+            if (proposal.Status == "draft")
+            {
+                proposal.Status = "sent";
+                proposal.SentAt = DateTimeOffset.UtcNow;
+                proposal.ExpiresAt = link.ExpiresAt;
+            }
+
+            proposal.UpdatedAt = DateTimeOffset.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                link.Token,
+                link.ExpiresAt,
+                path = $"/p/{link.Token}",
+                reused = false
+            });
+        }
+
+        // GET: api/proposals/{id}/builder — hydrate builder draft from a saved proposal
+        [HttpGet("{id}/builder")]
+        public async Task<IActionResult> GetBuilderDraft(Guid id)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == id);
+            object? itemPayload = null;
+
+            if (item != null)
+            {
+                var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
+                itemPayload = new
+                {
+                    productId = item.ProductId,
+                    finish = item.Finish,
+                    qty = item.Qty,
+                    unitPrice = item.UnitPrice,
+                    priceOverride = item.PriceOverride,
+                    included = item.Included,
+                    excluded = item.Excluded,
+                    addons = item.Addons,
+                    availableFinishes = product?.Finishes ?? Array.Empty<string>()
+                };
+            }
+
+            // Infer step for resume
+            var step = 1;
+            if (proposal.TemplateId != Guid.Empty) step = 2;
+            if (item != null) step = 3;
+            if (proposal.ClientId != Guid.Empty && item != null) step = 4;
+            if (item != null && proposal.ClientId != Guid.Empty) step = 5;
+
+            return Ok(new
+            {
+                proposalId = proposal.Id,
+                reference = proposal.Reference,
+                status = proposal.Status,
+                templateId = proposal.TemplateId,
+                templateVersion = proposal.TemplateVersion,
+                clientId = proposal.ClientId,
+                advisorId = proposal.AdvisorId,
+                currency = proposal.Currency,
+                vatMode = proposal.VatMode,
+                validityDays = proposal.ValidityDays,
+                step,
+                item = itemPayload
+            });
+        }
+
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> UpdateProposal(Guid id, [FromBody] UpdateProposalRequest request)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            if (proposal.Status != "draft")
+            {
+                return BadRequest("Only draft proposals can be edited.");
             }
 
             if (request.ValidityDays.HasValue)
             {
                 proposal.ValidityDays = request.ValidityDays.Value;
-                proposal.ExpiresAt = proposal.SentAt ?? proposal.CreatedAt;
-                proposal.ExpiresAt = proposal.ExpiresAt.Value.AddDays(request.ValidityDays.Value);
+                proposal.ExpiresAt = proposal.CreatedAt.AddDays(request.ValidityDays.Value);
             }
 
             if (request.Currency != null && !string.IsNullOrWhiteSpace(request.Currency))
@@ -446,33 +830,132 @@ namespace ProposalStudio.Controllers
                 proposal.Currency = request.Currency.Trim();
             }
 
+            if (request.VatMode != null && !string.IsNullOrWhiteSpace(request.VatMode))
+            {
+                proposal.VatMode = request.VatMode.Trim();
+            }
+
             if (request.AdvisorId.HasValue)
             {
                 proposal.AdvisorId = request.AdvisorId.Value;
             }
 
-            proposal.UpdatedAt = DateTimeOffset.UtcNow;
+            if (request.ClientId.HasValue)
+            {
+                proposal.ClientId = request.ClientId.Value;
+            }
 
+            if (request.TemplateId.HasValue)
+            {
+                var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == request.TemplateId.Value);
+                if (template != null)
+                {
+                    proposal.TemplateId = template.Id;
+                    proposal.TemplateVersion = template.Version;
+                }
+            }
+
+            proposal.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
 
-            return Ok(proposal);
+            return Ok(new
+            {
+                proposal.Id,
+                proposal.Reference,
+                proposal.Status,
+                proposal.ClientId,
+                proposal.TemplateId,
+                proposal.Currency,
+                proposal.VatMode,
+                proposal.ValidityDays,
+                proposal.UpdatedAt
+            });
         }
 
-        // DELETE: api/proposals/{id}
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> DeleteProposal(Guid id)
         {
             var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
-
             if (proposal == null)
             {
                 return NotFound();
             }
 
+            var items = await _context.ProposalItems.Where(i => i.ProposalId == id).ToListAsync();
+            _context.ProposalItems.RemoveRange(items);
             _context.Proposals.Remove(proposal);
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        private async Task<bool> CanAccessProposalAsync(Guid proposalId)
+        {
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            if (role is "Admin" or "Manager")
+            {
+                return true;
+            }
+
+            var userId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid)
+                ? uid
+                : (Guid?)null;
+
+            if (!userId.HasValue)
+            {
+                return false;
+            }
+
+            return await _context.Proposals.AnyAsync(p =>
+                p.Id == proposalId && p.AdvisorId == userId.Value);
+        }
+
+        private async Task<(Proposal proposal, ProposalPdfModel model)?> BuildPdfModelAsync(Guid id)
+        {
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (proposal == null) return null;
+
+            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == id);
+            if (item == null) return null;
+
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
+            if (product == null) return null;
+
+            var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Id == product.BrandId);
+            var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
+            var advisor = await _context.Users.FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
+
+            var finalPrice = (item.PriceOverride ?? item.UnitPrice ?? 0) * item.Qty;
+
+            var model = new ProposalPdfModel(
+                Reference: proposal.Reference,
+                ClientName: client?.Name ?? "Client",
+                AdvisorName: advisor?.Name ?? "Advisor",
+                BrandName: brand?.Name ?? "",
+                Model: product.Model,
+                Tagline: product.Tagline,
+                Blurb: product.Blurb,
+                Finish: item.Finish,
+                Currency: proposal.Currency,
+                PriceTotal: finalPrice,
+                ValidityDays: proposal.ValidityDays,
+                VatMode: proposal.VatMode,
+                Features: product.Features ?? Array.Empty<string>(),
+                Included: item.Included ?? Array.Empty<string>(),
+                Excluded: item.Excluded ?? Array.Empty<string>(),
+                AvailabilityNote: product.AvailabilityNote,
+                ContactLine: $"{business?.Name ?? "House of Pianos"} · Dubai, UAE · houseofpianos.ae"
+            );
+
+            return (proposal, model);
+        }
+
+        private static string SanitizeFilePart(string value)
+        {
+            var cleaned = string.Join("-", value.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
+            return string.IsNullOrWhiteSpace(cleaned) ? "X" : cleaned.Replace(' ', '-');
         }
     }
 
@@ -480,6 +963,7 @@ namespace ProposalStudio.Controllers
     {
         public Guid ClientId { get; set; }
         public Guid? AdvisorId { get; set; }
+        public Guid? TemplateId { get; set; }
         public string Currency { get; set; } = "AED";
         public string VatMode { get; set; } = "line";
         public int ValidityDays { get; set; } = 14;
@@ -502,6 +986,15 @@ namespace ProposalStudio.Controllers
         public string? Status { get; set; }
         public int? ValidityDays { get; set; }
         public string? Currency { get; set; }
+        public string? VatMode { get; set; }
         public Guid? AdvisorId { get; set; }
+        public Guid? ClientId { get; set; }
+        public Guid? TemplateId { get; set; }
+    }
+
+    public class CreateShareRequest
+    {
+        public int? ExpiryDays { get; set; }
+        public bool? ForceNew { get; set; }
     }
 }

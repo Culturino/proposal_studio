@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
@@ -7,6 +8,7 @@ namespace ProposalStudio.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ClientsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -138,6 +140,15 @@ namespace ProposalStudio.Controllers
             if (client == null)
             {
                 return NotFound();
+            }
+
+            var proposalCount = await _context.Proposals.CountAsync(p => p.ClientId == id);
+            if (proposalCount > 0)
+            {
+                return Conflict(new
+                {
+                    message = $"Cannot delete this client — {proposalCount} proposal(s) still reference them. Delete or reassign those proposals first."
+                });
             }
 
             _context.Clients.Remove(client);

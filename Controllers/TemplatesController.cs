@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
@@ -7,6 +8,7 @@ namespace ProposalStudio.Controllers
 {
     [ApiController]
     [Route("api/templates")]
+    [Authorize]
     public class TemplateController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -49,8 +51,9 @@ namespace ProposalStudio.Controllers
             return Ok(template);
         }
 
-        // POST: api/templates
+        // POST: api/templates (Admin)
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateTemplate(Template template)
         {
             template.Id = Guid.NewGuid();
@@ -64,8 +67,9 @@ namespace ProposalStudio.Controllers
             return CreatedAtAction(nameof(GetTemplate), new { id = template.Id }, template);
         }
 
-        // PATCH: api/templates/{id}
+        // PATCH: api/templates/{id} (Admin)
         [HttpPatch("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateTemplate(Guid id, [FromBody] UpdateTemplateRequest request)
         {
             var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == id);
@@ -100,8 +104,9 @@ namespace ProposalStudio.Controllers
             return Ok(template);
         }
 
-        // DELETE: api/templates/{id}
+        // DELETE: api/templates/{id} (Admin)
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteTemplate(Guid id)
         {
             var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == id);

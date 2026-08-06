@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
@@ -7,6 +8,7 @@ namespace ProposalStudio.Controllers
 {
     [ApiController]
     [Route("api/addons")]
+    [Authorize]
     public class AddonsController : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -49,6 +51,7 @@ namespace ProposalStudio.Controllers
         }
 
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateAddon(Addon addon)
         {
             addon.Id = Guid.NewGuid();
@@ -63,6 +66,7 @@ namespace ProposalStudio.Controllers
         }
 
         [HttpPatch("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateAddon(Guid id, [FromBody] UpdateAddonRequest request)
         {
             var addon = await _context.Addons.FirstOrDefaultAsync(a => a.Id == id);
@@ -104,6 +108,7 @@ namespace ProposalStudio.Controllers
         }
 
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteAddon(Guid id)
         {
             var addon = await _context.Addons.FirstOrDefaultAsync(a => a.Id == id);

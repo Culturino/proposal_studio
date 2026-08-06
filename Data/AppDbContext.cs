@@ -23,6 +23,8 @@ namespace ProposalStudio.Data
         public DbSet<Template> Templates { get; set; }
         public DbSet<Proposal> Proposals { get; set; }
         public DbSet<ProposalItem> ProposalItems { get; set; }
+        public DbSet<GovernanceSettings> GovernanceSettings { get; set; }
+        public DbSet<ShareLink> ShareLinks { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -231,6 +233,38 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Addons).HasColumnName("addons").HasColumnType("jsonb");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<GovernanceSettings>(entity =>
+            {
+                entity.ToTable("governance_settings");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.DiscountFloorPercent).HasColumnName("discount_floor_percent");
+                entity.Property(e => e.HighValueThreshold).HasColumnName("high_value_threshold");
+                entity.Property(e => e.VatDefaultMode).HasColumnName("vat_default_mode");
+                entity.Property(e => e.AllowPublicPrices).HasColumnName("allow_public_prices");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<ShareLink>(entity =>
+            {
+                entity.ToTable("share_links");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProposalId).HasColumnName("proposal_id");
+                entity.Property(e => e.Token).HasColumnName("token");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+                entity.Property(e => e.Revoked).HasColumnName("revoked");
+
+                entity.HasIndex(e => e.Token).IsUnique();
             });
         }
     }
