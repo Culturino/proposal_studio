@@ -87,11 +87,12 @@ namespace ProposalStudio.Data
             await db.SaveChangesAsync();
 
             // Steinway 2026 AED retail (Ebonised) from brief §11
+            // Blurbs sourced from houseofpiano.com product pages where available (2026).
             var steinway = brands["Steinway & Sons"];
             var products = new[]
             {
                 new SeedProduct("Model D-274", "concert-grand", 1055670m, "The concert standard",
-                    "The concert grand of the world's great stages.",
+                    "The Steinway Model D-274 is the pinnacle of the Steinway line—the uncompromising full concert grand, measuring nearly nine feet in length. Universally recognized as the standard against which all other concert instruments are judged, it projects both thunderous power and the most delicate pianissimo.",
                     new[] { "Exclusive use of solid wood", "Continuous bent rim", "Diaphragmatic soundboard", "Hexagrip pinblock", "Laminated bridge", "Duplex scale" },
                     """{"length":"274 cm","width":"158 cm","weight":"approx. 480 kg"}"""),
                 new SeedProduct("Model C-227", "grand", 778470m, "The recital grand",
@@ -99,23 +100,23 @@ namespace ProposalStudio.Data
                     new[] { "Exclusive use of solid wood", "Continuous bent rim", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"227 cm","width":"155 cm","weight":"approx. 425 kg"}"""),
                 new SeedProduct("Model B-211", "grand", 690690m, "“The perfect piano”",
-                    "Often called “the perfect piano.” The Model B occupies the rare middle ground between chamber intimacy and concert authority.",
+                    "This magnificent 211 cm grand is often referred to as “the perfect piano.” Wonderfully balanced and versatile, it performs extremely well in intimate settings, teaching studios, and mid-sized venues—with a rich tone palette ideal for private rooms and studios.",
                     new[] { "Exclusive use of solid wood", "Continuous bent rim", "Diaphragmatic soundboard", "Hexagrip pinblock", "Laminated bridge", "Duplex scale" },
                     """{"length":"211 cm (6′10½″)","width":"148 cm (58¼″)","weight":"approx. 345 kg","setting":"Salon · Studio · Recital"}"""),
                 new SeedProduct("Model A-188", "grand", 593670m, "The salon grand",
-                    "Full grand voice in a footprint made for the home.",
+                    "The legendary Model A—rich bass in a footprint made for the home. It produces a powerful, warm sound; the solid spruce soundboard vibrates freely and efficiently. Large enough for those who demand a full rich bass, yet small enough for almost any residence.",
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"188 cm","width":"146 cm","weight":"approx. 320 kg"}"""),
                 new SeedProduct("Model O-180", "grand", 575190m, "The living-room grand",
-                    "The most popular Steinway grand for the home.",
+                    "The Model O is the largest of Steinway’s baby grands—exceptionally warm and rich for its size, with limitless musical expression. A source of joy since the early 1900s, and available with Spirio high-resolution player technology.",
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"180 cm","width":"146 cm","weight":"approx. 280 kg"}"""),
                 new SeedProduct("Model M-170", "grand", 521829m, "The studio grand",
-                    "A medium grand of remarkable warmth.",
+                    "The Model M is a medium-size grand that is the perfect instrument for the home. Sensitive mechanics and the unmistakable Steinway sound—called a medium grand, but there is nothing medium about its tone.",
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"170 cm","width":"146 cm","weight":"approx. 275 kg"}"""),
                 new SeedProduct("Model S-155", "baby-grand", 503349m, "The baby grand",
-                    "The smallest Steinway grand — true craftsmanship scaled for the intimate room.",
+                    "The Steinway Model S-155 is the smallest member of the grand family, meticulously scaled and voiced to bring the legendary Steinway sound into the most confined spaces. A triumph of engineering that maximizes tonal depth within a minimal footprint.",
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"155 cm","width":"146 cm","weight":"approx. 255 kg"}"""),
                 new SeedProduct("Model K-132", "upright", 263109m, "The upright grand",
@@ -179,6 +180,14 @@ namespace ProposalStudio.Data
                 // Soft-archived products keep their row so we never recreate a new Id (broken images)
                 if (string.Equals(product.Status, "archived", StringComparison.OrdinalIgnoreCase))
                     continue;
+
+                // Keep catalog copy in sync with houseofpiano.com-sourced seed blurbs
+                if (!string.Equals(product.Blurb, sp.Blurb, StringComparison.Ordinal))
+                {
+                    product.Blurb = sp.Blurb;
+                    product.Tagline = sp.Tagline;
+                    product.UpdatedAt = now;
+                }
 
                 var price = await db.Prices.FirstOrDefaultAsync(p =>
                     p.ProductId == product.Id && p.Currency == "AED" && p.Finish == "Ebonised High Polish");
