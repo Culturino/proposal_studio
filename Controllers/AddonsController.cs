@@ -22,6 +22,7 @@ namespace ProposalStudio.Controllers
         public async Task<IActionResult> GetAddons()
         {
             var addons = await _context.Addons
+                .Where(a => a.Active)
                 .Select(a => new
                 {
                     a.Id,
@@ -116,7 +117,9 @@ namespace ProposalStudio.Controllers
             if (addon == null)
                 return NotFound();
 
-            _context.Addons.Remove(addon);
+            // Soft-delete — hard remove would be re-seeded on older builds; marker + inactive keeps it gone
+            addon.Active = false;
+            addon.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
 
             return NoContent();

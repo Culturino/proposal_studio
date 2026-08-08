@@ -329,7 +329,7 @@ namespace ProposalStudio.Controllers
             return Ok(product);
         }
 
-        // DELETE: api/products/{id} (Admin) — soft-archive so seed/restart cannot resurrect a new Id
+        // DELETE: api/products/{id} (Admin) — always soft-archive (survives restarts; seeder will not resurrect)
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProduct(Guid id)
@@ -341,33 +341,9 @@ namespace ProposalStudio.Controllers
                 return NotFound();
             }
 
-            var inUse = await _context.ProposalItems.AnyAsync(i => i.ProductId == id);
-            if (inUse)
-            {
-                product.Status = "archived";
-                product.UpdatedAt = DateTimeOffset.UtcNow;
-                await _context.SaveChangesAsync();
-                return Ok(new { message = "Product archived (referenced by proposals).", softDeleted = true });
-            }
-
-            // No proposal history — remove prices then product
-            var prices = await _context.Prices.Where(p => p.ProductId == id).ToListAsync();
-            _context.Prices.RemoveRange(prices);
-            _context.Products.Remove(product);
+            product.Status = "archived";
+            product.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
-
-            // Best-effort: drop static image so prefetch/catalog don't request a ghost file
-            try
-            {
-                var imagePath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "products", $"{id}.png");
-                if (System.IO.File.Exists(imagePath))
-                    System.IO.File.Delete(imagePath);
-            }
-            catch
-            {
-                // ignore IO errors
-            }
-
             return NoContent();
         }
 

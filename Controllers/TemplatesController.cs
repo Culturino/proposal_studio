@@ -23,6 +23,7 @@ namespace ProposalStudio.Controllers
         public async Task<IActionResult> GetTemplates()
         {
             var templates = await _context.Templates
+                .Where(t => t.Active)
                 .Select(t => new
                 {
                     t.Id,
@@ -114,7 +115,8 @@ namespace ProposalStudio.Controllers
             if (template == null)
                 return NotFound();
 
-            _context.Templates.Remove(template);
+            template.Active = false;
+            template.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
 
             return NoContent();

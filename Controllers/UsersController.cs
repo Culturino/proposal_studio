@@ -193,25 +193,10 @@ namespace ProposalStudio.Controllers
             if (callerId == id)
                 return BadRequest("You cannot delete your own account.");
 
-            // Proposals / clients may reference this user — deactivate instead of hard delete
-            var hasProposals = await _context.Proposals.AnyAsync(p => p.AdvisorId == id);
-            var createdClients = await _context.Clients.AnyAsync(c => c.CreatedBy == id);
-
-            if (hasProposals || createdClients)
-            {
-                user.Active = false;
-                user.UpdatedAt = DateTimeOffset.UtcNow;
-                await _context.SaveChangesAsync();
-                return Ok(new
-                {
-                    message = "User deactivated because they still own proposals or clients.",
-                    softDeleted = true
-                });
-            }
-
-            _context.Users.Remove(user);
+            // Always soft-delete — hard remove + seeder used to resurrect demo users on restart
+            user.Active = false;
+            user.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
-
             return NoContent();
         }
     }

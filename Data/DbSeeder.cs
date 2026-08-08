@@ -5,15 +5,25 @@ using ProposalStudio.Models;
 namespace ProposalStudio.Data
 {
     /// <summary>
-    /// Idempotent seed for Phase 1: business, brands, Steinway 2026 prices, template, governance, demo users.
+    /// One-time Phase 1 seed. After the database has been initialized, never re-inserts
+    /// products / addons / users / templates — so admin deletes stay deleted across restarts.
     /// </summary>
     public static class DbSeeder
     {
+        private const string SeedMarkerKey = "phase1_seeded";
+
         public static async Task SeedAsync(AppDbContext db)
         {
-            await EnsureGovernanceTableAsync(db);
+            await EnsureSupportTablesAsync(db);
 
             var now = DateTimeOffset.UtcNow;
+
+            // Already initialized → do not resurrect anything an admin removed
+            if (await IsInitializedAsync(db))
+            {
+                await EnsureSeedMarkerAsync(db, now);
+                return;
+            }
 
             var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
             if (business == null)
@@ -86,8 +96,7 @@ namespace ProposalStudio.Data
             }
             await db.SaveChangesAsync();
 
-            // Steinway 2026 AED retail (Ebonised) from brief §11
-            // Blurbs sourced from houseofpiano.com product pages where available (2026).
+            // Steinway 2026 AED retail — blurbs from houseofpiano.com where available
             var steinway = brands["Steinway & Sons"];
             var products = new[]
             {
@@ -143,138 +152,90 @@ namespace ProposalStudio.Data
                 "Inter-emirate & international freight"
             };
 
-            // Only create catalog rows on first seed. Never resurrect products an admin deleted.
-            var steinwayIsEmpty = !await db.Products.AnyAsync(p => p.BrandId == steinway.Id);
-
             foreach (var sp in products)
             {
-                var product = await db.Products.FirstOrDefaultAsync(p =>
-                    p.BrandId == steinway.Id && p.Model == sp.Model);
-
-                if (product == null)
-                {
-                    if (!steinwayIsEmpty)
-                        continue;
-
-                    product = new Product
-                    {
-                        Id = Guid.NewGuid(),
-                        BrandId = steinway.Id,
-                        CategoryId = categories[sp.CategorySlug].Id,
-                        Model = sp.Model,
-                        Dimensions = JsonDocument.Parse(sp.DimensionsJson),
-                        Features = sp.Features,
-                        Blurb = sp.Blurb,
-                        Tagline = sp.Tagline,
-                        Finishes = finishes,
-                        DefaultIncludes = includes,
-                        DefaultExcludes = excludes,
-                        Status = "active",
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    };
-                    db.Products.Add(product);
-                    await db.SaveChangesAsync();
-                }
-
-                // Soft-archived products keep their row so we never recreate a new Id (broken images)
-                if (string.Equals(product.Status, "archived", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                // Keep catalog copy in sync with houseofpiano.com-sourced seed blurbs
-                if (!string.Equals(product.Blurb, sp.Blurb, StringComparison.Ordinal))
-                {
-                    product.Blurb = sp.Blurb;
-                    product.Tagline = sp.Tagline;
-                    product.UpdatedAt = now;
-                }
-
-                var price = await db.Prices.FirstOrDefaultAsync(p =>
-                    p.ProductId == product.Id && p.Currency == "AED" && p.Finish == "Ebonised High Polish");
-
-                if (price == null)
-                {
-                    db.Prices.Add(new Price
-                    {
-                        Id = Guid.NewGuid(),
-                        ProductId = product.Id,
-                        Currency = "AED",
-                        Finish = "Ebonised High Polish",
-                        Amount = sp.Amount,
-                        ValidFrom = new DateOnly(2026, 1, 1),
-                        Source = "2026 retail list",
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    });
-                }
-                else if (price.Amount != sp.Amount)
-                {
-                    price.Amount = sp.Amount;
-                    price.Source = "2026 retail list";
-                    price.UpdatedAt = now;
-                }
-            }
-
-            // Blüthner placeholder (On request) — first seed only
-            var bluthner = brands["Blüthner"];
-            var bluModel = await db.Products.FirstOrDefaultAsync(p => p.BrandId == bluthner.Id && p.Model == "Model 4");
-            if (bluModel == null && !await db.Products.AnyAsync(p => p.BrandId == bluthner.Id))
-            {
-                bluModel = new Product
+                var product = new Product
                 {
                     Id = Guid.NewGuid(),
-                    BrandId = bluthner.Id,
-                    CategoryId = categories["grand"].Id,
-                    Model = "Model 4",
-                    Dimensions = JsonDocument.Parse("""{"length":"210 cm","width":"151 cm","weight":"approx. 350 kg"}"""),
-                    Features = new[] { "Aliquot stringing", "Solid Saxon spruce soundboard", "Hand-notched bridges" },
-                    Blurb = "Hand-built in Leipzig since 1853. The golden, singing Blüthner tone.",
-                    Tagline = "Aliquot stringing",
-                    Finishes = new[] { "Ebony Polish", "Walnut", "Mahogany", "White Polish" },
+                    BrandId = steinway.Id,
+                    CategoryId = categories[sp.CategorySlug].Id,
+                    Model = sp.Model,
+                    Dimensions = JsonDocument.Parse(sp.DimensionsJson),
+                    Features = sp.Features,
+                    Blurb = sp.Blurb,
+                    Tagline = sp.Tagline,
+                    Finishes = finishes,
                     DefaultIncludes = includes,
                     DefaultExcludes = excludes,
                     Status = "active",
                     CreatedAt = now,
                     UpdatedAt = now
                 };
-                db.Products.Add(bluModel);
+                db.Products.Add(product);
                 await db.SaveChangesAsync();
 
                 db.Prices.Add(new Price
                 {
                     Id = Guid.NewGuid(),
-                    ProductId = bluModel.Id,
+                    ProductId = product.Id,
                     Currency = "AED",
-                    Finish = "Ebony Polish",
-                    Amount = null, // On request
+                    Finish = "Ebonised High Polish",
+                    Amount = sp.Amount,
                     ValidFrom = new DateOnly(2026, 1, 1),
-                    Source = "pending confirmation",
+                    Source = "2026 retail list",
                     CreatedAt = now,
                     UpdatedAt = now
                 });
             }
 
-            // Template
-            var template = await db.Templates.FirstOrDefaultAsync(t =>
-                t.BusinessId == business.Id && t.Key == "piano_luxury");
-            if (template == null)
+            var bluthner = brands["Blüthner"];
+            var bluModel = new Product
             {
-                db.Templates.Add(new Template
-                {
-                    Id = Guid.NewGuid(),
-                    BusinessId = business.Id,
-                    Key = "piano_luxury",
-                    Name = "Piano — Luxury",
-                    Version = 1,
-                    PageSchema = JsonDocument.Parse("""{"pages":["cover","instrument","gallery","specs","investment","closing"]}"""),
-                    StylingLocked = true,
-                    Active = true,
-                    CreatedAt = now,
-                    UpdatedAt = now
-                });
-            }
+                Id = Guid.NewGuid(),
+                BrandId = bluthner.Id,
+                CategoryId = categories["grand"].Id,
+                Model = "Model 4",
+                Dimensions = JsonDocument.Parse("""{"length":"210 cm","width":"151 cm","weight":"approx. 350 kg"}"""),
+                Features = new[] { "Aliquot stringing", "Solid Saxon spruce soundboard", "Hand-notched bridges" },
+                Blurb = "Hand-built in Leipzig since 1853. The golden, singing Blüthner tone.",
+                Tagline = "Aliquot stringing",
+                Finishes = new[] { "Ebony Polish", "Walnut", "Mahogany", "White Polish" },
+                DefaultIncludes = includes,
+                DefaultExcludes = excludes,
+                Status = "active",
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            db.Products.Add(bluModel);
+            await db.SaveChangesAsync();
 
-            // Addons
+            db.Prices.Add(new Price
+            {
+                Id = Guid.NewGuid(),
+                ProductId = bluModel.Id,
+                Currency = "AED",
+                Finish = "Ebony Polish",
+                Amount = null,
+                ValidFrom = new DateOnly(2026, 1, 1),
+                Source = "pending confirmation",
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
+            db.Templates.Add(new Template
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = business.Id,
+                Key = "piano_luxury",
+                Name = "Piano — Luxury",
+                Version = 1,
+                PageSchema = JsonDocument.Parse("""{"pages":["cover","instrument","gallery","specs","investment","closing"]}"""),
+                StylingLocked = true,
+                Active = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
             var addonDefs = new (string Name, decimal Amount)[]
             {
                 ("Annual Maintenance (2 tunings/year)", 2400m),
@@ -284,41 +245,31 @@ namespace ProposalStudio.Data
             };
             foreach (var (name, amount) in addonDefs)
             {
-                var exists = await db.Addons.AnyAsync(a => a.BusinessId == business.Id && a.Name == name);
-                if (!exists)
-                {
-                    db.Addons.Add(new Addon
-                    {
-                        Id = Guid.NewGuid(),
-                        BusinessId = business.Id,
-                        Name = name,
-                        Amount = amount,
-                        Currency = "AED",
-                        Active = true,
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    });
-                }
-            }
-
-            // Governance
-            var gov = await db.GovernanceSettings.FirstOrDefaultAsync(g => g.BusinessId == business.Id);
-            if (gov == null)
-            {
-                db.GovernanceSettings.Add(new GovernanceSettings
+                db.Addons.Add(new Addon
                 {
                     Id = Guid.NewGuid(),
                     BusinessId = business.Id,
-                    DiscountFloorPercent = 8m,
-                    HighValueThreshold = 1_000_000m,
-                    VatDefaultMode = "line",
-                    AllowPublicPrices = false,
+                    Name = name,
+                    Amount = amount,
+                    Currency = "AED",
+                    Active = true,
                     CreatedAt = now,
                     UpdatedAt = now
                 });
             }
 
-            // Demo users (password: Password123!)
+            db.GovernanceSettings.Add(new GovernanceSettings
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = business.Id,
+                DiscountFloorPercent = 8m,
+                HighValueThreshold = 1_000_000m,
+                VatDefaultMode = "line",
+                AllowPublicPrices = false,
+                CreatedAt = now,
+                UpdatedAt = now
+            });
+
             var demoUsers = new (string Name, string Email, string Role)[]
             {
                 ("Shavkat Mamadjonov", "admin@houseofpianos.ae", "admin"),
@@ -329,34 +280,66 @@ namespace ProposalStudio.Data
             var hash = BCrypt.Net.BCrypt.HashPassword("Password123!");
             foreach (var (name, email, role) in demoUsers)
             {
-                var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
-                if (user == null)
+                db.Users.Add(new User
                 {
-                    db.Users.Add(new User
-                    {
-                        Id = Guid.NewGuid(),
-                        BusinessId = business.Id,
-                        Name = name,
-                        Email = email,
-                        PasswordHash = hash,
-                        Role = role,
-                        Active = true,
-                        TwoFactorEnabled = false,
-                        CreatedAt = now,
-                        UpdatedAt = now
-                    });
-                }
-                else if (string.IsNullOrWhiteSpace(user.PasswordHash))
-                {
-                    user.PasswordHash = hash;
-                    user.UpdatedAt = now;
-                }
+                    Id = Guid.NewGuid(),
+                    BusinessId = business.Id,
+                    Name = name,
+                    Email = email,
+                    PasswordHash = hash,
+                    Role = role,
+                    Active = true,
+                    TwoFactorEnabled = false,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
             }
 
             await db.SaveChangesAsync();
+            await EnsureSeedMarkerAsync(db, now);
         }
 
-        private static async Task EnsureGovernanceTableAsync(AppDbContext db)
+        /// <summary>
+        /// True once the DB has been seeded or already contains operational data.
+        /// </summary>
+        private static async Task<bool> IsInitializedAsync(AppDbContext db)
+        {
+            if (await HasSeedMarkerAsync(db))
+                return true;
+
+            // Existing installs without a marker — treat as initialized so we never re-add deleted rows
+            return await db.Users.AnyAsync()
+                || await db.Products.AnyAsync()
+                || await db.Addons.AnyAsync()
+                || await db.Templates.AnyAsync();
+        }
+
+        private static async Task<bool> HasSeedMarkerAsync(AppDbContext db)
+        {
+            await using var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                await conn.OpenAsync();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT 1 FROM seed_meta WHERE key = @k LIMIT 1";
+            var p = cmd.CreateParameter();
+            p.ParameterName = "@k";
+            p.Value = SeedMarkerKey;
+            cmd.Parameters.Add(p);
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null && result != DBNull.Value;
+        }
+
+        private static async Task EnsureSeedMarkerAsync(AppDbContext db, DateTimeOffset now)
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO seed_meta (key, value, updated_at)
+                VALUES ({SeedMarkerKey}, {"done"}, {now})
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                """);
+        }
+
+        private static async Task EnsureSupportTablesAsync(AppDbContext db)
         {
             await db.Database.ExecuteSqlRawAsync("""
                 CREATE TABLE IF NOT EXISTS governance_settings (
@@ -379,6 +362,14 @@ namespace ProposalStudio.Data
                     created_at timestamptz NOT NULL,
                     expires_at timestamptz NULL,
                     revoked boolean NOT NULL DEFAULT false
+                );
+                """);
+
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE IF NOT EXISTS seed_meta (
+                    key text PRIMARY KEY,
+                    value text NOT NULL,
+                    updated_at timestamptz NOT NULL
                 );
                 """);
         }
