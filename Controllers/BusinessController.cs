@@ -59,6 +59,7 @@ namespace ProposalStudio.Controllers
                 Name = request.Name.Trim(),
                 Slug = request.Slug.Trim().ToLower(),
                 ReferencePrefix = string.IsNullOrWhiteSpace(request.ReferencePrefix) ? "" : request.ReferencePrefix.Trim(),
+                Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
                 BrandKitId = request.BrandKitId,
                 Active = true, // Default to active on creation
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -95,6 +96,11 @@ namespace ProposalStudio.Controllers
             if (request.ReferencePrefix != null)
             {
                 business.ReferencePrefix = request.ReferencePrefix.Trim();
+            }
+
+            if (request.Blurb != null)
+            {
+                business.Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim();
             }
 
             if (request.BrandKitId.HasValue)
@@ -137,6 +143,7 @@ namespace ProposalStudio.Controllers
         public string Name { get; set; } = string.Empty;
         public string Slug { get; set; } = string.Empty;
         public string? ReferencePrefix { get; set; }
+        public string? Blurb { get; set; }
         public Guid? BrandKitId { get; set; }
     }
 
@@ -145,6 +152,7 @@ namespace ProposalStudio.Controllers
         public string? Name { get; set; }
         public string? Slug { get; set; }
         public string? ReferencePrefix { get; set; }
+        public string? Blurb { get; set; }
         public Guid? BrandKitId { get; set; }
         public bool? Active { get; set; }
     }

@@ -446,6 +446,22 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "ProposalStudio.Controllers.PublicShareController",
+    "Method": "GetPdf",
+    "RelativePath": "api/p/{token}/pdf",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "token",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "ProposalStudio.Controllers.ProductsController",
     "Method": "GetProducts",
     "RelativePath": "api/Products",

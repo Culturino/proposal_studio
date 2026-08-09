@@ -8,6 +8,9 @@
 
         public string Name { get; set; } = string.Empty;
 
+        /// <summary>Brand story shown in catalog / proposal copy.</summary>
+        public string? Blurb { get; set; }
+
         public Guid? LogoAssetId { get; set; }
 
         public DateTimeOffset CreatedAt { get; set; }

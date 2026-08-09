@@ -28,6 +28,7 @@ namespace ProposalStudio.Controllers
                 {
                     b.Id,
                     b.Name,
+                    b.Blurb,
                     b.LogoAssetId
                 })
                 .ToListAsync();
@@ -45,6 +46,7 @@ namespace ProposalStudio.Controllers
                 {
                     b.Id,
                     b.Name,
+                    b.Blurb,
                     b.LogoAssetId
                 })
                 .FirstOrDefaultAsync();
@@ -71,6 +73,7 @@ namespace ProposalStudio.Controllers
                 Id = Guid.NewGuid(),
                 BusinessId = request.BusinessId,
                 Name = request.Name.Trim(),
+                Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
                 LogoAssetId = request.LogoAssetId,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
@@ -99,6 +102,11 @@ namespace ProposalStudio.Controllers
                 {
                     brand.Name = request.Name.Trim();
                 }
+            }
+
+            if (request.Blurb != null)
+            {
+                brand.Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim();
             }
 
             // Update logo if a new one was provided
@@ -136,12 +144,14 @@ namespace ProposalStudio.Controllers
     {
         public Guid BusinessId { get; set; }
         public string Name { get; set; } = string.Empty;
+        public string? Blurb { get; set; }
         public Guid? LogoAssetId { get; set; }
     }
 
     public class UpdateBrandRequest
     {
         public string? Name { get; set; }
+        public string? Blurb { get; set; }
         public Guid? LogoAssetId { get; set; }
     }
 }

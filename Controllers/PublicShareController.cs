@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -16,32 +17,22 @@ namespace ProposalStudio.Controllers
     public class PublicShareController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ProposalPdfService _pdf;
 
-        public PublicShareController(AppDbContext context)
+        public PublicShareController(AppDbContext context, ProposalPdfService pdf)
         {
             _context = context;
+            _pdf = pdf;
         }
 
         // GET: api/p/{token}
         [HttpGet("{token}")]
         public async Task<IActionResult> GetByToken(string token)
         {
-            if (string.IsNullOrWhiteSpace(token) || token.Length < 16)
-            {
-                return NotFound();
-            }
-
-            var link = await _context.ShareLinks
-                .FirstOrDefaultAsync(s => s.Token == token);
-
-            if (link == null || link.Revoked)
+            var link = await ResolveLinkAsync(token);
+            if (link == null)
             {
                 return NotFound("This link is invalid or has been revoked.");
-            }
-
-            if (link.ExpiresAt.HasValue && link.ExpiresAt.Value < DateTimeOffset.UtcNow)
-            {
-                return NotFound("This link has expired.");
             }
 
             var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == link.ProposalId);
@@ -51,51 +42,19 @@ namespace ProposalStudio.Controllers
             }
 
             // Auto-advance Sent → Viewed on first open
-            if (proposal.Status is "sent" or "draft")
+            if (proposal.Status == "sent")
             {
-                if (proposal.Status == "sent")
-                {
-                    proposal.Status = "viewed";
-                    proposal.UpdatedAt = DateTimeOffset.UtcNow;
-                    await _context.SaveChangesAsync();
-                }
+                proposal.Status = "viewed";
+                proposal.UpdatedAt = DateTimeOffset.UtcNow;
+                await _context.SaveChangesAsync();
             }
+
+            await _pdf.EnsureOnDiskAsync(_context, proposal.Id);
 
             var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
             var advisor = await _context.Users.FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
             var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
-            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == proposal.Id);
 
-            object? itemPayload = null;
-            if (item != null)
-            {
-                var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
-                var brand = product == null
-                    ? null
-                    : await _context.Brands.FirstOrDefaultAsync(b => b.Id == product.BrandId);
-
-                itemPayload = new
-                {
-                    item.Finish,
-                    item.Qty,
-                    item.Included,
-                    item.Excluded,
-                    UnitPrice = item.PriceOverride ?? item.UnitPrice,
-                    Product = product == null ? null : new
-                    {
-                        product.Id,
-                        product.Model,
-                        product.Tagline,
-                        product.Blurb,
-                        product.Features,
-                        product.Finishes,
-                        product.AvailabilityNote
-                    },
-                    Brand = brand == null ? null : new { brand.Name }
-                };
-            }
-
-            // Privacy headers for client-facing view
             Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
             Response.Headers["Cache-Control"] = "no-store, private";
 
@@ -112,22 +71,46 @@ namespace ProposalStudio.Controllers
                 AdvisorName = advisor?.Name,
                 BusinessName = business?.Name ?? "House of Pianos",
                 ContactLine = "Dubai, UAE · houseofpianos.ae",
-                Item = itemPayload,
-                PdfAvailable = !string.IsNullOrWhiteSpace(proposal.PdfUrl)
+                PdfAvailable = !string.IsNullOrWhiteSpace(proposal.PdfUrl),
+                PdfPath = $"/api/p/{link.Token}/pdf"
             });
+        }
+
+        // GET: api/p/{token}/pdf — anonymous inline PDF for share links
+        [HttpGet("{token}/pdf")]
+        public async Task<IActionResult> GetPdf(string token)
+        {
+            var link = await ResolveLinkAsync(token);
+            if (link == null)
+            {
+                return NotFound("This link is invalid or has been revoked.");
+            }
+
+            var pdfUrl = await _pdf.EnsureOnDiskAsync(_context, link.ProposalId);
+            if (pdfUrl == null)
+            {
+                return NotFound("PDF is not available for this proposal.");
+            }
+
+            var path = ProposalPdfService.AbsolutePdfPath(pdfUrl)!;
+            if (!System.IO.File.Exists(path))
+            {
+                return NotFound("PDF file missing on disk.");
+            }
+
+            Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
+            Response.Headers["Cache-Control"] = "no-store, private";
+            Response.Headers["Content-Disposition"] = $"inline; filename=\"{Path.GetFileName(path)}\"";
+
+            return PhysicalFile(path, "application/pdf");
         }
 
         // POST: api/p/{token}/event — lightweight open tracking
         [HttpPost("{token}/event")]
         public async Task<IActionResult> LogEvent(string token, [FromBody] PublicEventRequest? request)
         {
-            var link = await _context.ShareLinks.FirstOrDefaultAsync(s => s.Token == token);
-            if (link == null || link.Revoked)
-            {
-                return NotFound();
-            }
-
-            if (link.ExpiresAt.HasValue && link.ExpiresAt.Value < DateTimeOffset.UtcNow)
+            var link = await ResolveLinkAsync(token);
+            if (link == null)
             {
                 return NotFound();
             }
@@ -150,6 +133,27 @@ namespace ProposalStudio.Controllers
             }
 
             return Ok(new { logged = true, status = proposal.Status });
+        }
+
+        private async Task<Models.ShareLink?> ResolveLinkAsync(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token) || token.Length < 16)
+            {
+                return null;
+            }
+
+            var link = await _context.ShareLinks.FirstOrDefaultAsync(s => s.Token == token);
+            if (link == null || link.Revoked)
+            {
+                return null;
+            }
+
+            if (link.ExpiresAt.HasValue && link.ExpiresAt.Value < DateTimeOffset.UtcNow)
+            {
+                return null;
+            }
+
+            return link;
         }
     }
 

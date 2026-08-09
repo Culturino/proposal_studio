@@ -10,6 +10,9 @@
 
         public string ReferencePrefix { get; set; } = string.Empty;
 
+        /// <summary>Short house narrative for proposals / brand surfaces.</summary>
+        public string? Blurb { get; set; }
+
         public Guid? BrandKitId { get; set; }
 
         public bool Active { get; set; }

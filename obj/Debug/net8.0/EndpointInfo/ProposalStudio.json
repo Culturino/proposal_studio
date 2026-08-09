@@ -1306,6 +1306,28 @@
         }
       }
     },
+    "/api/p/{token}/pdf": {
+      "get": {
+        "tags": [
+          "PublicShare"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/p/{token}/event": {
       "post": {
         "tags": [
@@ -1729,6 +1751,10 @@
             "type": "string",
             "nullable": true
           },
+          "blurb": {
+            "type": "string",
+            "nullable": true
+          },
           "brandKitId": {
             "type": "string",
             "format": "uuid",
@@ -1759,6 +1785,10 @@
             "type": "string",
             "nullable": true
           },
+          "blurb": {
+            "type": "string",
+            "nullable": true
+          },
           "logoAssetId": {
             "type": "string",
             "format": "uuid",
@@ -1779,6 +1809,10 @@
             "nullable": true
           },
           "referencePrefix": {
+            "type": "string",
+            "nullable": true
+          },
+          "blurb": {
             "type": "string",
             "nullable": true
           },
@@ -2061,6 +2095,10 @@
             "type": "string",
             "nullable": true
           },
+          "blurb": {
+            "type": "string",
+            "nullable": true
+          },
           "logoAssetId": {
             "type": "string",
             "format": "uuid",
@@ -2081,6 +2119,10 @@
             "nullable": true
           },
           "referencePrefix": {
+            "type": "string",
+            "nullable": true
+          },
+          "blurb": {
             "type": "string",
             "nullable": true
           },

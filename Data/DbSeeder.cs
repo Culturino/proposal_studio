@@ -18,6 +18,9 @@ namespace ProposalStudio.Data
 
             var now = DateTimeOffset.UtcNow;
 
+            // Safe on every boot: schema columns + narrative copy (does not re-insert deleted rows)
+            await EnsureBlurbsAsync(db, now);
+
             // Already initialized → do not resurrect anything an admin removed
             if (await IsInitializedAsync(db))
             {
@@ -34,6 +37,7 @@ namespace ProposalStudio.Data
                     Name = "House of Pianos",
                     Slug = "house-of-pianos",
                     ReferencePrefix = "HOP",
+                    Blurb = CatalogCopy.HouseOfPianosBlurb,
                     Active = true,
                     CreatedAt = now,
                     UpdatedAt = now
@@ -55,6 +59,7 @@ namespace ProposalStudio.Data
                         Id = Guid.NewGuid(),
                         BusinessId = business.Id,
                         Name = name,
+                        Blurb = CatalogCopy.BrandBlurbs.GetValueOrDefault(name),
                         CreatedAt = now,
                         UpdatedAt = now
                     };
@@ -96,40 +101,40 @@ namespace ProposalStudio.Data
             }
             await db.SaveChangesAsync();
 
-            // Steinway 2026 AED retail — blurbs from houseofpiano.com where available
+            // Steinway 2026 AED retail — blurbs from official Steinway model pages
             var steinway = brands["Steinway & Sons"];
             var products = new[]
             {
                 new SeedProduct("Model D-274", "concert-grand", 1055670m, "The concert standard",
-                    "The Steinway Model D-274 is the pinnacle of the Steinway line—the uncompromising full concert grand, measuring nearly nine feet in length. Universally recognized as the standard against which all other concert instruments are judged, it projects both thunderous power and the most delicate pianissimo.",
+                    CatalogCopy.ProductBlurbs["Model D-274"],
                     new[] { "Exclusive use of solid wood", "Continuous bent rim", "Diaphragmatic soundboard", "Hexagrip pinblock", "Laminated bridge", "Duplex scale" },
                     """{"length":"274 cm","width":"158 cm","weight":"approx. 480 kg"}"""),
                 new SeedProduct("Model C-227", "grand", 778470m, "The recital grand",
-                    "A semi-concert grand with breadth for a hall and refinement for a salon.",
+                    CatalogCopy.ProductBlurbs["Model C-227"],
                     new[] { "Exclusive use of solid wood", "Continuous bent rim", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"227 cm","width":"155 cm","weight":"approx. 425 kg"}"""),
                 new SeedProduct("Model B-211", "grand", 690690m, "“The perfect piano”",
-                    "This magnificent 211 cm grand is often referred to as “the perfect piano.” Wonderfully balanced and versatile, it performs extremely well in intimate settings, teaching studios, and mid-sized venues—with a rich tone palette ideal for private rooms and studios.",
+                    CatalogCopy.ProductBlurbs["Model B-211"],
                     new[] { "Exclusive use of solid wood", "Continuous bent rim", "Diaphragmatic soundboard", "Hexagrip pinblock", "Laminated bridge", "Duplex scale" },
                     """{"length":"211 cm (6′10½″)","width":"148 cm (58¼″)","weight":"approx. 345 kg","setting":"Salon · Studio · Recital"}"""),
                 new SeedProduct("Model A-188", "grand", 593670m, "The salon grand",
-                    "The legendary Model A—rich bass in a footprint made for the home. It produces a powerful, warm sound; the solid spruce soundboard vibrates freely and efficiently. Large enough for those who demand a full rich bass, yet small enough for almost any residence.",
+                    CatalogCopy.ProductBlurbs["Model A-188"],
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"188 cm","width":"146 cm","weight":"approx. 320 kg"}"""),
                 new SeedProduct("Model O-180", "grand", 575190m, "The living-room grand",
-                    "The Model O is the largest of Steinway’s baby grands—exceptionally warm and rich for its size, with limitless musical expression. A source of joy since the early 1900s, and available with Spirio high-resolution player technology.",
+                    CatalogCopy.ProductBlurbs["Model O-180"],
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"180 cm","width":"146 cm","weight":"approx. 280 kg"}"""),
                 new SeedProduct("Model M-170", "grand", 521829m, "The studio grand",
-                    "The Model M is a medium-size grand that is the perfect instrument for the home. Sensitive mechanics and the unmistakable Steinway sound—called a medium grand, but there is nothing medium about its tone.",
+                    CatalogCopy.ProductBlurbs["Model M-170"],
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"170 cm","width":"146 cm","weight":"approx. 275 kg"}"""),
                 new SeedProduct("Model S-155", "baby-grand", 503349m, "The baby grand",
-                    "The Steinway Model S-155 is the smallest member of the grand family, meticulously scaled and voiced to bring the legendary Steinway sound into the most confined spaces. A triumph of engineering that maximizes tonal depth within a minimal footprint.",
+                    CatalogCopy.ProductBlurbs["Model S-155"],
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"155 cm","width":"146 cm","weight":"approx. 255 kg"}"""),
                 new SeedProduct("Model K-132", "upright", 263109m, "The upright grand",
-                    "The tallest Steinway upright: grand-scale soundboard in a vertical case.",
+                    CatalogCopy.ProductBlurbs["Model K-132"],
                     new[] { "Exclusive use of solid wood", "Diaphragmatic soundboard", "Hexagrip pinblock" },
                     """{"length":"132 cm (height)","width":"152 cm","weight":"approx. 295 kg"}"""),
             };
@@ -197,7 +202,7 @@ namespace ProposalStudio.Data
                 Model = "Model 4",
                 Dimensions = JsonDocument.Parse("""{"length":"210 cm","width":"151 cm","weight":"approx. 350 kg"}"""),
                 Features = new[] { "Aliquot stringing", "Solid Saxon spruce soundboard", "Hand-notched bridges" },
-                Blurb = "Hand-built in Leipzig since 1853. The golden, singing Blüthner tone.",
+                Blurb = CatalogCopy.ProductBlurbs["Model 4"],
                 Tagline = "Aliquot stringing",
                 Finishes = new[] { "Ebony Polish", "Walnut", "Mahogany", "White Polish" },
                 DefaultIncludes = includes,
@@ -372,6 +377,49 @@ namespace ProposalStudio.Data
                     updated_at timestamptz NOT NULL
                 );
                 """);
+
+            await db.Database.ExecuteSqlRawAsync("""
+                ALTER TABLE businesses ADD COLUMN IF NOT EXISTS blurb text;
+                ALTER TABLE brands ADD COLUMN IF NOT EXISTS blurb text;
+                """);
+        }
+
+        /// <summary>
+        /// Fills business/brand placeholder blurbs and refreshes known product blurbs.
+        /// Does not insert new rows.
+        /// </summary>
+        private static async Task EnsureBlurbsAsync(AppDbContext db, DateTimeOffset now)
+        {
+            var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
+            if (business != null && business.Blurb != CatalogCopy.HouseOfPianosBlurb)
+            {
+                business.Blurb = CatalogCopy.HouseOfPianosBlurb;
+                business.UpdatedAt = now;
+            }
+
+            var brands = await db.Brands.ToListAsync();
+            foreach (var brand in brands)
+            {
+                if (CatalogCopy.BrandBlurbs.TryGetValue(brand.Name, out var brandBlurb) &&
+                    brand.Blurb != brandBlurb)
+                {
+                    brand.Blurb = brandBlurb;
+                    brand.UpdatedAt = now;
+                }
+            }
+
+            var products = await db.Products.ToListAsync();
+            foreach (var product in products)
+            {
+                if (CatalogCopy.ProductBlurbs.TryGetValue(product.Model, out var productBlurb) &&
+                    product.Blurb != productBlurb)
+                {
+                    product.Blurb = productBlurb;
+                    product.UpdatedAt = now;
+                }
+            }
+
+            await db.SaveChangesAsync();
         }
 
         private record SeedProduct(

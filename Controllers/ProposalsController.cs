@@ -493,37 +493,19 @@ namespace ProposalStudio.Controllers
                 return Forbid();
             }
 
-            var built = await BuildPdfModelAsync(id);
-            if (built == null)
+            var pdfUrl = await _pdf.EnsureOnDiskAsync(_context, id, force: true);
+            if (pdfUrl == null)
             {
                 return NotFound("Proposal or item was not found.");
             }
 
-            var (proposal, model) = built.Value;
-
-            // Immutable snapshot so later catalog edits cannot change this PDF
-            proposal.Snapshot = ProposalPdfService.BuildSnapshot(model);
-
-            var bytes = _pdf.Generate(model);
-            var dir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "pdfs");
-            Directory.CreateDirectory(dir);
-
-            var safeClient = SanitizeFilePart(model.ClientName);
-            var safeModel = SanitizeFilePart(model.Model);
-            var fileName = $"{proposal.Reference}_{safeClient}_{safeModel}.pdf";
-            var path = Path.Combine(dir, fileName);
-            await System.IO.File.WriteAllBytesAsync(path, bytes);
-
-            proposal.PdfUrl = $"/pdfs/{fileName}";
-            proposal.UpdatedAt = DateTimeOffset.UtcNow;
-            await _context.SaveChangesAsync();
-
+            var proposal = await _context.Proposals.FirstAsync(p => p.Id == id);
             return Ok(new
             {
                 proposal.Id,
                 proposal.Reference,
-                pdfUrl = proposal.PdfUrl,
-                fileName,
+                pdfUrl,
+                fileName = Path.GetFileName(pdfUrl),
                 message = "PDF generated and snapshot stored"
             });
         }
@@ -537,27 +519,13 @@ namespace ProposalStudio.Controllers
                 return Forbid();
             }
 
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
-            if (proposal == null)
+            var pdfUrl = await _pdf.EnsureOnDiskAsync(_context, id);
+            if (pdfUrl == null)
             {
-                return NotFound();
+                return NotFound("Proposal or item was not found.");
             }
 
-            if (string.IsNullOrWhiteSpace(proposal.PdfUrl))
-            {
-                return NotFound("PDF has not been generated yet.");
-            }
-
-            var path = Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "wwwroot",
-                proposal.PdfUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-
-            if (!System.IO.File.Exists(path))
-            {
-                return NotFound("PDF file missing on disk.");
-            }
-
+            var path = ProposalPdfService.AbsolutePdfPath(pdfUrl)!;
             return PhysicalFile(path, "application/pdf", Path.GetFileName(path));
         }
 
@@ -610,22 +578,7 @@ namespace ProposalStudio.Controllers
                 });
             }
 
-            if (string.IsNullOrWhiteSpace(proposal.PdfUrl))
-            {
-                // Auto-generate PDF + snapshot on first send
-                var built = await BuildPdfModelAsync(id);
-                if (built != null)
-                {
-                    var (p, model) = built.Value;
-                    p.Snapshot = ProposalPdfService.BuildSnapshot(model);
-                    var bytes = _pdf.Generate(model);
-                    var dir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "pdfs");
-                    Directory.CreateDirectory(dir);
-                    var fileName = $"{p.Reference}_{SanitizeFilePart(model.ClientName)}_{SanitizeFilePart(model.Model)}.pdf";
-                    await System.IO.File.WriteAllBytesAsync(Path.Combine(dir, fileName), bytes);
-                    p.PdfUrl = $"/pdfs/{fileName}";
-                }
-            }
+            await _pdf.EnsureOnDiskAsync(_context, id);
 
             var now = DateTimeOffset.UtcNow;
             proposal.Status = "sent";
@@ -687,6 +640,9 @@ namespace ProposalStudio.Controllers
                 });
             }
 
+            // Share links always open the generated PDF
+            await _pdf.EnsureOnDiskAsync(_context, id);
+
             var existing = await _context.ShareLinks
                 .Where(s => s.ProposalId == id && !s.Revoked)
                 .OrderByDescending(s => s.CreatedAt)
@@ -702,6 +658,7 @@ namespace ProposalStudio.Controllers
                     existing.Token,
                     existing.ExpiresAt,
                     path = $"/p/{existing.Token}",
+                    pdfPath = $"/api/p/{existing.Token}/pdf",
                     reused = true
                 });
             }
@@ -737,6 +694,7 @@ namespace ProposalStudio.Controllers
                 link.Token,
                 link.ExpiresAt,
                 path = $"/p/{link.Token}",
+                pdfPath = $"/api/p/{link.Token}/pdf",
                 reused = false
             });
         }
@@ -911,52 +869,6 @@ namespace ProposalStudio.Controllers
                 p.Id == proposalId && p.AdvisorId == userId.Value);
         }
 
-        private async Task<(Proposal proposal, ProposalPdfModel model)?> BuildPdfModelAsync(Guid id)
-        {
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
-            if (proposal == null) return null;
-
-            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == id);
-            if (item == null) return null;
-
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == item.ProductId);
-            if (product == null) return null;
-
-            var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Id == product.BrandId);
-            var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
-            var advisor = await _context.Users.FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
-            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
-
-            var finalPrice = (item.PriceOverride ?? item.UnitPrice ?? 0) * item.Qty;
-
-            var model = new ProposalPdfModel(
-                Reference: proposal.Reference,
-                ClientName: client?.Name ?? "Client",
-                AdvisorName: advisor?.Name ?? "Advisor",
-                BrandName: brand?.Name ?? "",
-                Model: product.Model,
-                Tagline: product.Tagline,
-                Blurb: product.Blurb,
-                Finish: item.Finish,
-                Currency: proposal.Currency,
-                PriceTotal: finalPrice,
-                ValidityDays: proposal.ValidityDays,
-                VatMode: proposal.VatMode,
-                Features: product.Features ?? Array.Empty<string>(),
-                Included: item.Included ?? Array.Empty<string>(),
-                Excluded: item.Excluded ?? Array.Empty<string>(),
-                AvailabilityNote: product.AvailabilityNote,
-                ContactLine: $"{business?.Name ?? "House of Pianos"} · Dubai, UAE · houseofpianos.ae"
-            );
-
-            return (proposal, model);
-        }
-
-        private static string SanitizeFilePart(string value)
-        {
-            var cleaned = string.Join("-", value.Split(Path.GetInvalidFileNameChars(), StringSplitOptions.RemoveEmptyEntries));
-            return string.IsNullOrWhiteSpace(cleaned) ? "X" : cleaned.Replace(' ', '-');
-        }
     }
 
     public class CreateProposalRequest
