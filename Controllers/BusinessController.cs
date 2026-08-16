@@ -61,7 +61,7 @@ namespace ProposalStudio.Controllers
                 ReferencePrefix = string.IsNullOrWhiteSpace(request.ReferencePrefix) ? "" : request.ReferencePrefix.Trim(),
                 Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
                 BrandKitId = request.BrandKitId,
-                Active = true, // Default to active on creation
+                Active = true,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             };
