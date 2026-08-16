@@ -15,6 +15,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddControllers().AddNewtonsoftJson();
 builder.Services.AddScoped<PricingGovernance>();
+builder.Services.AddScoped<AuditService>();
 builder.Services.AddSingleton<ProposalPdfService>();
 
 builder.Services.AddEndpointsApiExplorer();

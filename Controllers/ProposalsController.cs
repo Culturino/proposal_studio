@@ -290,9 +290,9 @@ namespace ProposalStudio.Controllers
                 return NotFound("Proposal was not found.");
             }
 
-            if (proposal.Status != "draft")
+            if (proposal.Status is not ("draft" or "sent" or "viewed"))
             {
-                return BadRequest("Only draft proposals can be edited.");
+                return BadRequest("Only draft, sent, or viewed proposals can be edited.");
             }
 
             var product = await _context.Products
@@ -357,6 +357,7 @@ namespace ProposalStudio.Controllers
             proposal.UpdatedAt = now;
 
             await _context.SaveChangesAsync();
+            await _pdf.RefreshContentAsync(_context, proposal.Id);
 
             return Ok(new
             {
@@ -450,6 +451,7 @@ namespace ProposalStudio.Controllers
 
             var offered = item.PriceOverride ?? item.UnitPrice;
             var belowFloor = _pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent);
+            var approval = await GetLatestBelowFloorApprovalAsync(id);
 
             return Ok(new
             {
@@ -479,12 +481,15 @@ namespace ProposalStudio.Controllers
                     CatalogAmount = catalogAmount,
                     DiscountFloorPercent = gov.DiscountFloorPercent,
                     HighValue = _pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold),
-                    gov.HighValueThreshold
+                    gov.HighValueThreshold,
+                    ApprovalStatus = approval?.Status,
+                    ApprovalId = approval?.Id,
+                    FloorApproved = approval?.Status == "approved"
                 }
             });
         }
 
-        // POST: api/proposals/{id}/generate-pdf
+        // POST: api/proposals/{id}/generate-pdf — refresh stored content snapshot (PDF rendered on demand)
         [HttpPost("{id}/generate-pdf")]
         public async Task<IActionResult> GeneratePdf(Guid id)
         {
@@ -493,8 +498,8 @@ namespace ProposalStudio.Controllers
                 return Forbid();
             }
 
-            var pdfUrl = await _pdf.EnsureOnDiskAsync(_context, id, force: true);
-            if (pdfUrl == null)
+            var ok = await _pdf.RefreshContentAsync(_context, id);
+            if (!ok)
             {
                 return NotFound("Proposal or item was not found.");
             }
@@ -504,13 +509,12 @@ namespace ProposalStudio.Controllers
             {
                 proposal.Id,
                 proposal.Reference,
-                pdfUrl,
-                fileName = Path.GetFileName(pdfUrl),
-                message = "PDF generated and snapshot stored"
+                snapshotStored = proposal.Snapshot != null,
+                message = "Proposal content snapshot refreshed. PDF is rendered on demand from the latest data."
             });
         }
 
-        // GET: api/proposals/{id}/pdf
+        // GET: api/proposals/{id}/pdf — always rebuild from newest proposal + catalog data
         [HttpGet("{id}/pdf")]
         public async Task<IActionResult> DownloadPdf(Guid id)
         {
@@ -519,14 +523,14 @@ namespace ProposalStudio.Controllers
                 return Forbid();
             }
 
-            var pdfUrl = await _pdf.EnsureOnDiskAsync(_context, id);
-            if (pdfUrl == null)
+            var rendered = await _pdf.RenderAsync(_context, id);
+            if (rendered == null)
             {
                 return NotFound("Proposal or item was not found.");
             }
 
-            var path = ProposalPdfService.AbsolutePdfPath(pdfUrl)!;
-            return PhysicalFile(path, "application/pdf", Path.GetFileName(path));
+            var (bytes, fileName) = rendered.Value;
+            return File(bytes, "application/pdf", fileName);
         }
 
         // POST: api/proposals/{id}/send — Phase 1: mark sent; block below-floor prices
@@ -565,20 +569,22 @@ namespace ProposalStudio.Controllers
             var offered = item.PriceOverride ?? item.UnitPrice;
             var role = User.FindFirstValue(ClaimTypes.Role);
             var canApprove = role is "Admin" or "Manager";
+            var floorApproved = await HasApprovedBelowFloorAsync(id, offered);
 
-            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove)
+            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove && !floorApproved)
             {
                 return BadRequest(new
                 {
                     error = "below_floor",
-                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Manager approval is required before sending.",
+                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Request manager approval before sending.",
                     floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
                     catalogAmount,
-                    offered
+                    offered,
+                    canRequestApproval = true
                 });
             }
 
-            await _pdf.EnsureOnDiskAsync(_context, id);
+            await _pdf.RefreshContentAsync(_context, id);
 
             var now = DateTimeOffset.UtcNow;
             proposal.Status = "sent";
@@ -594,7 +600,7 @@ namespace ProposalStudio.Controllers
                 proposal.Status,
                 proposal.SentAt,
                 proposal.ExpiresAt,
-                proposal.PdfUrl
+                snapshotStored = proposal.Snapshot != null
             });
         }
 
@@ -629,19 +635,21 @@ namespace ProposalStudio.Controllers
             var offered = item.PriceOverride ?? item.UnitPrice;
             var role = User.FindFirstValue(ClaimTypes.Role);
             var canApprove = role is "Admin" or "Manager";
+            var floorApproved = await HasApprovedBelowFloorAsync(id, offered);
 
-            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove)
+            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove && !floorApproved)
             {
                 return BadRequest(new
                 {
                     error = "below_floor",
-                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Manager approval is required before sharing.",
-                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent)
+                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Request manager approval before sharing.",
+                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
+                    canRequestApproval = true
                 });
             }
 
-            // Share links always open the generated PDF
-            await _pdf.EnsureOnDiskAsync(_context, id);
+            // Refresh content snapshot; PDF is rendered on demand for share viewers
+            await _pdf.RefreshContentAsync(_context, id);
 
             var existing = await _context.ShareLinks
                 .Where(s => s.ProposalId == id && !s.Revoked)
@@ -772,9 +780,9 @@ namespace ProposalStudio.Controllers
                 return NotFound();
             }
 
-            if (proposal.Status != "draft")
+            if (proposal.Status is not ("draft" or "sent" or "viewed"))
             {
-                return BadRequest("Only draft proposals can be edited.");
+                return BadRequest("Only draft, sent, or viewed proposals can be edited.");
             }
 
             if (request.ValidityDays.HasValue)
@@ -815,6 +823,7 @@ namespace ProposalStudio.Controllers
 
             proposal.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
+            await _pdf.RefreshContentAsync(_context, proposal.Id);
 
             return Ok(new
             {
@@ -846,6 +855,30 @@ namespace ProposalStudio.Controllers
             await _context.SaveChangesAsync();
 
             return NoContent();
+        }
+
+        private async Task<ApprovalRequest?> GetLatestBelowFloorApprovalAsync(Guid proposalId)
+        {
+            return await _context.ApprovalRequests
+                .Where(a => a.ProposalId == proposalId && a.Kind == "below_floor")
+                .OrderByDescending(a => a.CreatedAt)
+                .FirstOrDefaultAsync();
+        }
+
+        private async Task<bool> HasApprovedBelowFloorAsync(Guid proposalId, decimal? offered)
+        {
+            var latest = await GetLatestBelowFloorApprovalAsync(proposalId);
+            if (latest == null || latest.Status != "approved")
+                return false;
+
+            // If the offer moved since approval, require a fresh ask
+            if (offered.HasValue && latest.OfferedPrice.HasValue &&
+                offered.Value != latest.OfferedPrice.Value)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private async Task<bool> CanAccessProposalAsync(Guid proposalId)

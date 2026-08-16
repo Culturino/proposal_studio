@@ -49,7 +49,7 @@ namespace ProposalStudio.Controllers
                 await _context.SaveChangesAsync();
             }
 
-            await _pdf.EnsureOnDiskAsync(_context, proposal.Id);
+            var hasItem = await _context.ProposalItems.AnyAsync(i => i.ProposalId == proposal.Id);
 
             var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
             var advisor = await _context.Users.FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
@@ -71,12 +71,12 @@ namespace ProposalStudio.Controllers
                 AdvisorName = advisor?.Name,
                 BusinessName = business?.Name ?? "House of Pianos",
                 ContactLine = "Dubai, UAE · houseofpianos.ae",
-                PdfAvailable = !string.IsNullOrWhiteSpace(proposal.PdfUrl),
+                PdfAvailable = hasItem,
                 PdfPath = $"/api/p/{link.Token}/pdf"
             });
         }
 
-        // GET: api/p/{token}/pdf — anonymous inline PDF for share links
+        // GET: api/p/{token}/pdf — always rebuild from newest proposal + catalog data
         [HttpGet("{token}/pdf")]
         public async Task<IActionResult> GetPdf(string token)
         {
@@ -86,23 +86,19 @@ namespace ProposalStudio.Controllers
                 return NotFound("This link is invalid or has been revoked.");
             }
 
-            var pdfUrl = await _pdf.EnsureOnDiskAsync(_context, link.ProposalId);
-            if (pdfUrl == null)
+            var rendered = await _pdf.RenderAsync(_context, link.ProposalId);
+            if (rendered == null)
             {
                 return NotFound("PDF is not available for this proposal.");
             }
 
-            var path = ProposalPdfService.AbsolutePdfPath(pdfUrl)!;
-            if (!System.IO.File.Exists(path))
-            {
-                return NotFound("PDF file missing on disk.");
-            }
+            var (bytes, fileName) = rendered.Value;
 
             Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive";
             Response.Headers["Cache-Control"] = "no-store, private";
-            Response.Headers["Content-Disposition"] = $"inline; filename=\"{Path.GetFileName(path)}\"";
+            Response.Headers["Content-Disposition"] = $"inline; filename=\"{fileName}\"";
 
-            return PhysicalFile(path, "application/pdf");
+            return File(bytes, "application/pdf");
         }
 
         // POST: api/p/{token}/event — lightweight open tracking

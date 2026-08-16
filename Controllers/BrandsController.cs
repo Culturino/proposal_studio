@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -12,10 +13,12 @@ namespace ProposalStudio.Controllers
     public class BrandsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly AuditService _audit;
 
-        public BrandsController(AppDbContext context)
+        public BrandsController(AppDbContext context, AuditService audit)
         {
             _context = context;
+            _audit = audit;
         }
 
         // GET: api/brands
@@ -81,6 +84,7 @@ namespace ProposalStudio.Controllers
 
             _context.Brands.Add(brand);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "create", "brand", brand.Id, null, AuditService.BrandSnapshot(brand));
 
             return CreatedAtAction(nameof(GetBrand), new { id = brand.Id }, brand);
         }
@@ -95,6 +99,8 @@ namespace ProposalStudio.Controllers
             {
                 return NotFound("Brand not found");
             }
+
+            var before = AuditService.BrandSnapshot(brand);
 
             if (request.Name != null)
             {
@@ -118,6 +124,7 @@ namespace ProposalStudio.Controllers
             brand.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "update", "brand", brand.Id, before, AuditService.BrandSnapshot(brand));
 
             return Ok(brand);
         }
@@ -133,8 +140,10 @@ namespace ProposalStudio.Controllers
                 return NotFound("Brand not found");
             }
 
+            var before = AuditService.BrandSnapshot(brand);
             _context.Brands.Remove(brand);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "delete", "brand", brand.Id, before, null);
 
             return NoContent();
         }

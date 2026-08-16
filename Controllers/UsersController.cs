@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 using System.Security.Claims;
 
 namespace ProposalStudio.Controllers
@@ -13,10 +14,12 @@ namespace ProposalStudio.Controllers
     public class UserController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly AuditService _audit;
 
-        public UserController(AppDbContext context)
+        public UserController(AppDbContext context, AuditService audit)
         {
             _context = context;
+            _audit = audit;
         }
 
         // GET: api/users — advisors listed for builder picker; full manage is Admin UI
@@ -98,6 +101,7 @@ namespace ProposalStudio.Controllers
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "create", "user", user.Id, null, AuditService.UserRoleSnapshot(user));
 
             return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new
             {
@@ -119,6 +123,10 @@ namespace ProposalStudio.Controllers
             if (user == null)
                 return NotFound();
 
+            var before = AuditService.UserRoleSnapshot(user);
+            var prevRole = user.Role;
+            var prevActive = user.Active;
+
             if (request.Name != null && !string.IsNullOrWhiteSpace(request.Name))
             {
                 user.Name = request.Name.Trim();
@@ -131,7 +139,7 @@ namespace ProposalStudio.Controllers
 
             if (request.Role != null && !string.IsNullOrWhiteSpace(request.Role))
             {
-                user.Role = request.Role;
+                user.Role = request.Role.Trim().ToLower();
             }
 
             if (request.Active.HasValue)
@@ -142,6 +150,19 @@ namespace ProposalStudio.Controllers
             user.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _context.SaveChangesAsync();
+
+            var roleChanged = !string.Equals(prevRole, user.Role, StringComparison.OrdinalIgnoreCase);
+            var activeChanged = prevActive != user.Active;
+            if (roleChanged || activeChanged)
+            {
+                await _audit.LogAsync(
+                    User,
+                    roleChanged ? "update_role" : "update",
+                    "user",
+                    user.Id,
+                    before,
+                    AuditService.UserRoleSnapshot(user));
+            }
 
             return Ok(user);
         }
@@ -194,9 +215,11 @@ namespace ProposalStudio.Controllers
                 return BadRequest("You cannot delete your own account.");
 
             // Always soft-delete — hard remove + seeder used to resurrect demo users on restart
+            var before = AuditService.UserRoleSnapshot(user);
             user.Active = false;
             user.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "delete", "user", user.Id, before, AuditService.UserRoleSnapshot(user));
             return NoContent();
         }
     }

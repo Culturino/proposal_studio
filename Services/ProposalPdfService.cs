@@ -590,49 +590,47 @@ namespace ProposalStudio.Services
         }
 
         /// <summary>
-        /// Ensures a PDF exists on disk for the proposal. Regenerates when missing or forced.
-        /// Returns the public relative PdfUrl (e.g. /pdfs/…).
+        /// Rebuilds the PDF content model from the latest proposal + catalog data and
+        /// persists it on the proposal.snapshot. PDFs are not stored on disk.
         /// </summary>
-        public async Task<string?> EnsureOnDiskAsync(AppDbContext db, Guid proposalId, bool force = false)
+        public async Task<bool> RefreshContentAsync(AppDbContext db, Guid proposalId)
+        {
+            var built = await BuildModelAsync(db, proposalId);
+            if (built == null) return false;
+
+            var (proposal, model) = built.Value;
+            proposal.Snapshot = BuildSnapshot(model);
+            proposal.PdfUrl = null; // content snapshot is the source of truth
+            proposal.UpdatedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+            return true;
+        }
+
+        /// <summary>
+        /// Renders a fresh PDF from the newest proposal + catalog data, updates snapshot, returns bytes.
+        /// </summary>
+        public async Task<(byte[] Bytes, string FileName)?> RenderAsync(AppDbContext db, Guid proposalId)
         {
             var built = await BuildModelAsync(db, proposalId);
             if (built == null) return null;
 
             var (proposal, model) = built.Value;
-            var absolute = AbsolutePdfPath(proposal.PdfUrl);
-
-            if (!force &&
-                !string.IsNullOrWhiteSpace(proposal.PdfUrl) &&
-                absolute != null &&
-                File.Exists(absolute))
-            {
-                return proposal.PdfUrl;
-            }
-
             proposal.Snapshot = BuildSnapshot(model);
-            var bytes = Generate(model);
-
-            var dir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "pdfs");
-            Directory.CreateDirectory(dir);
-
-            var fileName = $"{proposal.Reference}_{SanitizeFilePart(model.ClientName)}_{SanitizeFilePart(model.Model)}.pdf";
-            var path = Path.Combine(dir, fileName);
-            await File.WriteAllBytesAsync(path, bytes);
-
-            proposal.PdfUrl = $"/pdfs/{fileName}";
+            proposal.PdfUrl = null;
             proposal.UpdatedAt = DateTimeOffset.UtcNow;
             await db.SaveChangesAsync();
 
-            return proposal.PdfUrl;
+            var bytes = Generate(model);
+            var fileName =
+                $"{proposal.Reference}_{SanitizeFilePart(model.ClientName)}_{SanitizeFilePart(model.Model)}.pdf";
+            return (bytes, fileName);
         }
 
-        public static string? AbsolutePdfPath(string? pdfUrl)
+        [Obsolete("PDFs are generated on demand; use RenderAsync / RefreshContentAsync.")]
+        public async Task<string?> EnsureOnDiskAsync(AppDbContext db, Guid proposalId, bool force = false)
         {
-            if (string.IsNullOrWhiteSpace(pdfUrl)) return null;
-            return Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "wwwroot",
-                pdfUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+            var rendered = await RenderAsync(db, proposalId);
+            return rendered == null ? null : "on-demand";
         }
 
         public async Task<(Proposal proposal, ProposalPdfModel model)?> BuildModelAsync(AppDbContext db, Guid id)

@@ -371,6 +371,55 @@ namespace ProposalStudio.Data
                 """);
 
             await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id uuid PRIMARY KEY,
+                    actor_id uuid NULL,
+                    action text NOT NULL,
+                    entity text NOT NULL,
+                    entity_id uuid NULL,
+                    before jsonb NULL,
+                    after jsonb NULL,
+                    occurred_at timestamptz NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_audit_logs_occurred_at ON audit_logs (occurred_at DESC);
+                CREATE INDEX IF NOT EXISTS ix_audit_logs_entity_occurred ON audit_logs (entity, occurred_at DESC);
+                """);
+
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE IF NOT EXISTS approval_requests (
+                    id uuid PRIMARY KEY,
+                    proposal_id uuid NOT NULL,
+                    kind text NOT NULL,
+                    requested_by uuid NOT NULL,
+                    approver_id uuid NULL,
+                    status text NOT NULL,
+                    offered_price numeric NULL,
+                    floor_price numeric NULL,
+                    catalog_price numeric NULL,
+                    message text NULL,
+                    created_at timestamptz NOT NULL,
+                    decided_at timestamptz NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_approval_requests_proposal_status
+                    ON approval_requests (proposal_id, status);
+                """);
+
+            await db.Database.ExecuteSqlRawAsync("""
+                CREATE TABLE IF NOT EXISTS notifications (
+                    id uuid PRIMARY KEY,
+                    user_id uuid NOT NULL,
+                    title text NOT NULL,
+                    body text NOT NULL,
+                    kind text NULL,
+                    related_id uuid NULL,
+                    read boolean NOT NULL DEFAULT false,
+                    created_at timestamptz NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_notifications_user_read
+                    ON notifications (user_id, read, created_at DESC);
+                """);
+
+            await db.Database.ExecuteSqlRawAsync("""
                 CREATE TABLE IF NOT EXISTS seed_meta (
                     key text PRIMARY KEY,
                     value text NOT NULL,

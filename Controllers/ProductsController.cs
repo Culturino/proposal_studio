@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -13,10 +14,12 @@ namespace ProposalStudio.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly AuditService _audit;
 
-        public ProductsController(AppDbContext context)
+        public ProductsController(AppDbContext context, AuditService audit)
         {
             _context = context;
+            _audit = audit;
         }
 
         // GET: api/products?brand=&category=&q=
@@ -231,6 +234,7 @@ namespace ProposalStudio.Controllers
 
             _context.Products.Add(product);
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "create", "product", product.Id, null, AuditService.ProductSnapshot(product));
 
             return CreatedAtAction(nameof(GetProduct), new { id = product.Id }, product);
         }
@@ -246,6 +250,8 @@ namespace ProposalStudio.Controllers
             {
                 return NotFound();
             }
+
+            var before = AuditService.ProductSnapshot(product);
 
             if (request.BrandId.HasValue)
             {
@@ -325,6 +331,7 @@ namespace ProposalStudio.Controllers
             product.UpdatedAt = DateTimeOffset.UtcNow;
 
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "update", "product", product.Id, before, AuditService.ProductSnapshot(product));
 
             return Ok(product);
         }
@@ -341,9 +348,11 @@ namespace ProposalStudio.Controllers
                 return NotFound();
             }
 
+            var before = AuditService.ProductSnapshot(product);
             product.Status = "archived";
             product.UpdatedAt = DateTimeOffset.UtcNow;
             await _context.SaveChangesAsync();
+            await _audit.LogAsync(User, "delete", "product", product.Id, before, AuditService.ProductSnapshot(product));
             return NoContent();
         }
 

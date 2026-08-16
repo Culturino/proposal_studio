@@ -22,3 +22,4 @@ wwwroot\pdfs\HOP-1029_Hussein_Model-O-180.pdf
 wwwroot\pdfs\HOP-1030_Tom-Hanks_Model-D-274.pdf
 wwwroot\pdfs\HOP-1031_Shakira_Model-S-155.pdf
 wwwroot\pdfs\HOP-1032_Shakira_Model-D-274.pdf
+wwwroot\pdfs\HOP-1034_Hussein_Model-B-211.pdf

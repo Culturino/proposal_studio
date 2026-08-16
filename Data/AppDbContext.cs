@@ -25,6 +25,9 @@ namespace ProposalStudio.Data
         public DbSet<ProposalItem> ProposalItems { get; set; }
         public DbSet<GovernanceSettings> GovernanceSettings { get; set; }
         public DbSet<ShareLink> ShareLinks { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<ApprovalRequest> ApprovalRequests { get; set; }
+        public DbSet<AppNotification> Notifications { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -267,6 +270,59 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Revoked).HasColumnName("revoked");
 
                 entity.HasIndex(e => e.Token).IsUnique();
+            });
+
+            modelBuilder.Entity<AuditLog>(entity =>
+            {
+                entity.ToTable("audit_logs");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ActorId).HasColumnName("actor_id");
+                entity.Property(e => e.Action).HasColumnName("action");
+                entity.Property(e => e.Entity).HasColumnName("entity");
+                entity.Property(e => e.EntityId).HasColumnName("entity_id");
+                entity.Property(e => e.Before).HasColumnName("before").HasColumnType("jsonb");
+                entity.Property(e => e.After).HasColumnName("after").HasColumnType("jsonb");
+                entity.Property(e => e.OccurredAt).HasColumnName("occurred_at");
+
+                entity.HasIndex(e => e.OccurredAt);
+                entity.HasIndex(e => new { e.Entity, e.OccurredAt });
+            });
+
+            modelBuilder.Entity<ApprovalRequest>(entity =>
+            {
+                entity.ToTable("approval_requests");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProposalId).HasColumnName("proposal_id");
+                entity.Property(e => e.Kind).HasColumnName("kind");
+                entity.Property(e => e.RequestedBy).HasColumnName("requested_by");
+                entity.Property(e => e.ApproverId).HasColumnName("approver_id");
+                entity.Property(e => e.Status).HasColumnName("status");
+                entity.Property(e => e.OfferedPrice).HasColumnName("offered_price");
+                entity.Property(e => e.FloorPrice).HasColumnName("floor_price");
+                entity.Property(e => e.CatalogPrice).HasColumnName("catalog_price");
+                entity.Property(e => e.Message).HasColumnName("message");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.DecidedAt).HasColumnName("decided_at");
+                entity.HasIndex(e => new { e.ProposalId, e.Status });
+            });
+
+            modelBuilder.Entity<AppNotification>(entity =>
+            {
+                entity.ToTable("notifications");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+                entity.Property(e => e.Title).HasColumnName("title");
+                entity.Property(e => e.Body).HasColumnName("body");
+                entity.Property(e => e.Kind).HasColumnName("kind");
+                entity.Property(e => e.RelatedId).HasColumnName("related_id");
+                entity.Property(e => e.Read).HasColumnName("read");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.HasIndex(e => new { e.UserId, e.Read, e.CreatedAt });
             });
         }
     }
