@@ -43,7 +43,7 @@
           "Microsoft.AspNetCore.App"
         ]
       },
-      "Microsoft.AspNetCore.JsonPatch/8.0.29": {
+      "Microsoft.AspNetCore.JsonPatch/8.0.30": {
         "type": "package",
         "dependencies": {
           "Microsoft.CSharp": "4.7.0",
@@ -60,10 +60,10 @@
           }
         }
       },
-      "Microsoft.AspNetCore.Mvc.NewtonsoftJson/8.0.29": {
+      "Microsoft.AspNetCore.Mvc.NewtonsoftJson/8.0.30": {
         "type": "package",
         "dependencies": {
-          "Microsoft.AspNetCore.JsonPatch": "8.0.29",
+          "Microsoft.AspNetCore.JsonPatch": "8.0.30",
           "Newtonsoft.Json": "13.0.3",
           "Newtonsoft.Json.Bson": "1.0.2"
         },
@@ -1293,10 +1293,10 @@
         "microsoft.aspnetcore.authentication.jwtbearer.nuspec"
       ]
     },
-    "Microsoft.AspNetCore.JsonPatch/8.0.29": {
-      "sha512": "t4BRuRlei/93OABVE89KzYAlE5uHNezfLZQUMdp8tl3F1Jyw/h74Zk2QTYZ9zyns4NYf0GpkMufoXV6berx6tQ==",
+    "Microsoft.AspNetCore.JsonPatch/8.0.30": {
+      "sha512": "C4KiwO7oxfjW9Buhu7oXeZ6FywexBMK9P+9YBDuIxnFYaXu8+bfAsjMeurnxjjzQYmlTOy3gwCTI6dHG2BT3VQ==",
       "type": "package",
-      "path": "microsoft.aspnetcore.jsonpatch/8.0.29",
+      "path": "microsoft.aspnetcore.jsonpatch/8.0.30",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -1308,14 +1308,14 @@
         "lib/net8.0/Microsoft.AspNetCore.JsonPatch.xml",
         "lib/netstandard2.0/Microsoft.AspNetCore.JsonPatch.dll",
         "lib/netstandard2.0/Microsoft.AspNetCore.JsonPatch.xml",
-        "microsoft.aspnetcore.jsonpatch.8.0.29.nupkg.sha512",
+        "microsoft.aspnetcore.jsonpatch.8.0.30.nupkg.sha512",
         "microsoft.aspnetcore.jsonpatch.nuspec"
       ]
     },
-    "Microsoft.AspNetCore.Mvc.NewtonsoftJson/8.0.29": {
-      "sha512": "D+L9on/3JoEYY4cxhE9El1sRuG2OQaKkoMQYT5Mseee5akHo74qYCvJg/nMf51Wmm9umvzkqY8Nc6AqGW1DryQ==",
+    "Microsoft.AspNetCore.Mvc.NewtonsoftJson/8.0.30": {
+      "sha512": "9O1Q+RvHiojAc7QmzANqZhhfoS0E8nviPcETzMGt1rKALnM2YzOBsfs7ilZZkgTPiJN2LKNZY8Ed0c1F/aQekQ==",
       "type": "package",
-      "path": "microsoft.aspnetcore.mvc.newtonsoftjson/8.0.29",
+      "path": "microsoft.aspnetcore.mvc.newtonsoftjson/8.0.30",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
@@ -1323,7 +1323,7 @@
         "THIRD-PARTY-NOTICES.TXT",
         "lib/net8.0/Microsoft.AspNetCore.Mvc.NewtonsoftJson.dll",
         "lib/net8.0/Microsoft.AspNetCore.Mvc.NewtonsoftJson.xml",
-        "microsoft.aspnetcore.mvc.newtonsoftjson.8.0.29.nupkg.sha512",
+        "microsoft.aspnetcore.mvc.newtonsoftjson.8.0.30.nupkg.sha512",
         "microsoft.aspnetcore.mvc.newtonsoftjson.nuspec"
       ]
     },

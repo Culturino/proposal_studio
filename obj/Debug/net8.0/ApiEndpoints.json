@@ -304,6 +304,16 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "ProposalStudio.Controllers.CategoriesController",
+    "Method": "GetCategories",
+    "RelativePath": "api/Categories",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "ProposalStudio.Controllers.ClientsController",
     "Method": "GetClients",
     "RelativePath": "api/Clients",

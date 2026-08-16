@@ -531,6 +531,18 @@
         }
       }
     },
+    "/api/Categories": {
+      "get": {
+        "tags": [
+          "Categories"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/Clients": {
       "get": {
         "tags": [
