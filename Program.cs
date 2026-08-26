@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using ProposalStudio.Data;
+using ProposalStudio.Serialization;
 using ProposalStudio.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,7 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-builder.Services.AddControllers().AddNewtonsoftJson();
+builder.Services.AddControllers().AddNewtonsoftJson(options =>
+    options.SerializerSettings.Converters.Add(new JsonDocumentConverter()));
 builder.Services.AddScoped<PricingGovernance>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddSingleton<ProposalPdfService>();
@@ -25,6 +27,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Name = "Authorization",
         Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = Microsoft.OpenApi.Models.ParameterLocation.Header,

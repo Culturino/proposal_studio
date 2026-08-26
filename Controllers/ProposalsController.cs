@@ -514,7 +514,7 @@ namespace ProposalStudio.Controllers
             });
         }
 
-        // GET: api/proposals/{id}/pdf — always rebuild from newest proposal + catalog data
+        // GET: api/proposals/{id}/pdf — render from stored content snapshot (immutable view)
         [HttpGet("{id}/pdf")]
         public async Task<IActionResult> DownloadPdf(Guid id)
         {

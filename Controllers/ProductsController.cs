@@ -366,7 +366,7 @@ namespace ProposalStudio.Controllers
 
             if (dimensions is string raw)
             {
-                return JsonDocument.Parse(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
+                return Sanitize(string.IsNullOrWhiteSpace(raw) ? "{}" : raw);
             }
 
             if (dimensions is JsonElement element)
@@ -379,15 +379,60 @@ namespace ProposalStudio.Controllers
                 if (element.ValueKind == JsonValueKind.String)
                 {
                     var text = element.GetString();
-                    return JsonDocument.Parse(string.IsNullOrWhiteSpace(text) ? "{}" : text);
+                    return Sanitize(string.IsNullOrWhiteSpace(text) ? "{}" : text!);
                 }
 
-                return JsonDocument.Parse(element.GetRawText());
+                return Sanitize(element.GetRawText());
             }
 
             // Newtonsoft typically deserializes anonymous JSON objects as JObject/Dictionary
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(dimensions);
-            return JsonDocument.Parse(string.IsNullOrWhiteSpace(json) || json == "null" ? "{}" : json);
+            return Sanitize(string.IsNullOrWhiteSpace(json) || json == "null" ? "{}" : json);
+        }
+
+        /// <summary>
+        /// Reduces a dimensions payload to a flat label/value map. Nested values cannot be
+        /// rendered on the proposal, and clients that read a mis-serialised jsonb column echo
+        /// its wrapper back on save, so both are dropped rather than stored.
+        /// </summary>
+        private static JsonDocument Sanitize(string json)
+        {
+            JsonDocument parsed;
+            try
+            {
+                parsed = JsonDocument.Parse(json);
+            }
+            catch (JsonException)
+            {
+                return JsonDocument.Parse("{}");
+            }
+
+            using (parsed)
+            {
+                if (parsed.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return JsonDocument.Parse("{}");
+                }
+
+                var clean = new Dictionary<string, string>();
+                foreach (var prop in parsed.RootElement.EnumerateObject())
+                {
+                    if (string.Equals(prop.Name, "RootElement", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var value = prop.Value.ValueKind switch
+                    {
+                        JsonValueKind.String => prop.Value.GetString(),
+                        JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => prop.Value.ToString(),
+                        _ => null
+                    };
+
+                    if (!string.IsNullOrWhiteSpace(value))
+                        clean[prop.Name] = value!.Trim();
+                }
+
+                return JsonDocument.Parse(JsonSerializer.Serialize(clean));
+            }
         }
     }
 
