@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using ProposalStudio.Data;
 using ProposalStudio.Serialization;
@@ -13,6 +14,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 
 builder.Services.AddControllers().AddNewtonsoftJson(options =>
     options.SerializerSettings.Converters.Add(new JsonDocumentConverter()));
@@ -95,17 +98,23 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// Seed Phase 1 catalog / users / governance
+// Bring the schema up to date, then fill in the content the application needs.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbStartup");
+
+    // A half-migrated schema breaks everything downstream, so this one is fatal.
+    await db.Database.MigrateAsync();
+
     try
     {
-        await DbSeeder.SeedAsync(db);
+        var seedOptions = scope.ServiceProvider
+            .GetRequiredService<IOptions<SeedOptions>>().Value;
+        await DbSeeder.SeedAsync(db, seedOptions, logger);
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbSeeder");
         logger.LogError(ex, "Database seed failed — API will still start");
     }
 }

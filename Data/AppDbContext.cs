@@ -28,6 +28,7 @@ namespace ProposalStudio.Data
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<ApprovalRequest> ApprovalRequests { get; set; }
         public DbSet<AppNotification> Notifications { get; set; }
+        public DbSet<SeedMeta> SeedMeta { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -48,6 +49,9 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Active).HasColumnName("active");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => e.Slug).IsUnique();
+                entity.HasIndex(e => e.ReferencePrefix).IsUnique();
             });
 
             modelBuilder.Entity<Brand>(entity =>
@@ -63,6 +67,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.LogoAssetId).HasColumnName("logo_asset_id");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => new { e.BusinessId, e.Name }).IsUnique();
             });
 
             modelBuilder.Entity<Addon>(entity =>
@@ -79,6 +85,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Active).HasColumnName("active");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => new { e.BusinessId, e.Name }).IsUnique();
             });
 
             modelBuilder.Entity<ProductCategory>(entity =>
@@ -95,6 +103,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.SortOrder).HasColumnName("sort_order");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => new { e.BusinessId, e.Slug }).IsUnique();
             });
 
             modelBuilder.Entity<Product>(entity =>
@@ -120,6 +130,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Status).HasColumnName("status").HasConversion<string>();
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => new { e.BrandId, e.Model }).IsUnique();
             });
 
             modelBuilder.Entity<Price>(entity =>
@@ -137,6 +149,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Source).HasColumnName("source");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => new { e.ProductId, e.Currency, e.Finish, e.ValidFrom }).IsUnique();
             });
 
             modelBuilder.Entity<Client>(entity =>
@@ -173,6 +187,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.TwoFactorEnabled).HasColumnName("two_factor_enabled");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => e.Email).IsUnique();
             });
 
             modelBuilder.Entity<Template>(entity =>
@@ -191,6 +207,8 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Active).HasColumnName("active");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => new { e.BusinessId, e.Key, e.Version }).IsUnique();
             });
 
             modelBuilder.Entity<Proposal>(entity =>
@@ -218,6 +236,9 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
                 entity.Property(e => e.Snapshot).HasColumnName("snapshot").HasColumnType("jsonb");
                 entity.Property(e => e.PdfUrl).HasColumnName("pdf_url");
+
+                entity.HasIndex(e => e.Reference).IsUnique();
+                entity.HasIndex(e => new { e.BusinessId, e.ReferenceNumber }).IsUnique();
             });
 
             modelBuilder.Entity<ProposalItem>(entity =>
@@ -323,6 +344,15 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Read).HasColumnName("read");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.HasIndex(e => new { e.UserId, e.Read, e.CreatedAt });
+            });
+
+            modelBuilder.Entity<SeedMeta>(entity =>
+            {
+                entity.ToTable("seed_meta");
+                entity.HasKey(e => e.Key);
+                entity.Property(e => e.Key).HasColumnName("key");
+                entity.Property(e => e.Value).HasColumnName("value");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             });
         }
     }
