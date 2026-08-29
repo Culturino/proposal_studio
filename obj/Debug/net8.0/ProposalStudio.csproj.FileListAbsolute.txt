@@ -373,4 +373,13 @@ C:\Users\ACER\Desktop\inter\_pdfpreview\bin-iso\Debug\net8.0\ProposalStudio.deps
 C:\Users\ACER\Desktop\inter\_pdfpreview\bin-iso\Debug\net8.0\ProposalStudio.runtimeconfig.json
 C:\Users\ACER\Desktop\inter\_pdfpreview\bin-iso\Debug\net8.0\ProposalStudio.dll
 C:\Users\ACER\Desktop\inter\_pdfpreview\bin-iso\Debug\net8.0\ProposalStudio.pdb
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\SkiaSharp.dll
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\linux-arm\native\libSkiaSharp.so
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\linux-arm64\native\libSkiaSharp.so
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\linux-musl-x64\native\libSkiaSharp.so
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\linux-x64\native\libSkiaSharp.so
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\osx\native\libSkiaSharp.dylib
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\win-arm64\native\libSkiaSharp.dll
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\win-x64\native\libSkiaSharp.dll
+C:\Users\ACER\Desktop\inter\files\ProposalStudio\bin\Debug\net8.0\runtimes\win-x86\native\libSkiaSharp.dll
 C:\Users\ACER\Desktop\inter\files\ProposalStudio\obj\Debug\net8.0\staticwebassets.upToDateCheck.txt

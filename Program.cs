@@ -21,6 +21,7 @@ builder.Services.AddControllers().AddNewtonsoftJson(options =>
     options.SerializerSettings.Converters.Add(new JsonDocumentConverter()));
 builder.Services.AddScoped<PricingGovernance>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddSingleton<ProductImageStore>();
 builder.Services.AddSingleton<ProposalPdfService>();
 
 builder.Services.AddEndpointsApiExplorer();

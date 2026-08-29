@@ -15,11 +15,13 @@ namespace ProposalStudio.Controllers
     {
         private readonly AppDbContext _context;
         private readonly AuditService _audit;
+        private readonly ProductImageStore _images;
 
-        public ProductsController(AppDbContext context, AuditService audit)
+        public ProductsController(AppDbContext context, AuditService audit, ProductImageStore images)
         {
             _context = context;
             _audit = audit;
+            _images = images;
         }
 
         // GET: api/products?brand=&category=&q=
@@ -161,26 +163,116 @@ namespace ProposalStudio.Controllers
             return Ok(product.Finishes ?? Array.Empty<string>());
         }
 
-        // GET: api/products/{id}/image (public)
+        // GET: api/products/{id}/image?slot=1&variant=thumb (public)
+        // slot 1 is the full profile shot; 2 and 3 are the additional views.
         [HttpGet("{id}/image")]
         [AllowAnonymous]
-        public IActionResult GetProductImage(Guid id)
+        public IActionResult GetProductImage(
+            Guid id,
+            [FromQuery] int slot = 1,
+            [FromQuery] string? variant = null)
         {
-            var path = Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "wwwroot/images/products",
-                $"{id}.png"
-            );
+            if (!ProductImageStore.IsValidSlot(slot))
+            {
+                return BadRequest("Slot must be 1, 2 or 3.");
+            }
 
-            if (!System.IO.File.Exists(path))
+            var wantsThumbnail = string.Equals(variant, "thumb", StringComparison.OrdinalIgnoreCase);
+
+            var path = wantsThumbnail
+                ? _images.ResolveThumbnail(id, slot)
+                : _images.FullPath(id, slot);
+
+            if (path == null || !System.IO.File.Exists(path))
             {
                 return NotFound("Image not found");
             }
 
-            // Cache for 1 hour to speed up catalog loading
-            Response.Headers.Append("Cache-Control", "public, max-age=3600");
+            // Revalidate rather than cache blindly: an admin replacing a photo previously kept
+            // seeing the old one for the lifetime of the cache entry.
+            var stamp = System.IO.File.GetLastWriteTimeUtc(path);
+            var etag = $"\"{stamp.Ticks:x}-{new FileInfo(path).Length:x}\"";
+
+            if (Request.Headers.IfNoneMatch.Contains(etag))
+            {
+                return StatusCode(StatusCodes.Status304NotModified);
+            }
+
+            Response.Headers.ETag = etag;
+            Response.Headers.CacheControl = "public, max-age=60, must-revalidate";
 
             return PhysicalFile(path, "image/png");
+        }
+
+        // POST: api/products/{id}/image?slot=1 (Admin)
+        [HttpPost("{id}/image")]
+        [Authorize(Roles = "Admin")]
+        [RequestSizeLimit(ProductImageStore.MaxUploadBytes)]
+        public async Task<IActionResult> UploadProductImage(
+            Guid id, IFormFile file, [FromQuery] int slot = 1)
+        {
+            if (!ProductImageStore.IsValidSlot(slot))
+            {
+                return BadRequest("Slot must be 1, 2 or 3.");
+            }
+
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest("No file was uploaded.");
+            }
+
+            if (file.Length > ProductImageStore.MaxUploadBytes)
+            {
+                return BadRequest("Image must be 25 MB or smaller.");
+            }
+
+            if (!await _context.Products.AnyAsync(p => p.Id == id))
+            {
+                return NotFound("Product not found");
+            }
+
+            await using var stream = file.OpenReadStream();
+            var result = await _images.SaveAsync(id, slot, stream);
+
+            if (!result.Success)
+            {
+                return BadRequest(result.Error);
+            }
+
+            await _audit.LogAsync(User, "product.image.upload", "Product", id, null, new { slot });
+
+            return Ok(new
+            {
+                slot,
+                result.Width,
+                result.Height,
+                result.HasTransparency,
+                // The cover composites the hero over black, so a flat image shows as a rectangle.
+                warning = slot == 1 && !result.HasTransparency
+                    ? "This image has no transparent background, so it will appear as a rectangle on the proposal cover. A cut-out PNG works best."
+                    : null
+            });
+        }
+
+        // DELETE: api/products/{id}/image?slot=1 (Admin)
+        [HttpDelete("{id}/image")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteProductImage(Guid id, [FromQuery] int slot = 1)
+        {
+            if (!ProductImageStore.IsValidSlot(slot))
+            {
+                return BadRequest("Slot must be 1, 2 or 3.");
+            }
+
+            if (!_images.Exists(id, slot))
+            {
+                return NotFound("Image not found");
+            }
+
+            _images.Delete(id, slot);
+            await _audit.LogAsync(User, "product.image.delete", "Product", id, new { slot }, null);
+
+            return NoContent();
         }
 
         // POST: api/products (Admin)
@@ -210,13 +302,23 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Category was not found.");
             }
 
+            var model = request.Model.Trim();
+
+            // The (brand_id, model) unique index would otherwise surface as an opaque 500.
+            var duplicate = await _context.Products
+                .AnyAsync(p => p.BrandId == request.BrandId && p.Model == model);
+            if (duplicate)
+            {
+                return Conflict($"This brand already has a product called \"{model}\".");
+            }
+
             var now = DateTimeOffset.UtcNow;
             var product = new Product
             {
                 Id = Guid.NewGuid(),
                 BrandId = request.BrandId,
                 CategoryId = request.CategoryId,
-                Model = request.Model.Trim(),
+                Model = model,
                 Dimensions = ParseDimensions(request.Dimensions),
                 Features = request.Features ?? Array.Empty<string>(),
                 Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
@@ -279,6 +381,16 @@ namespace ProposalStudio.Controllers
             if (request.Model != null && !string.IsNullOrWhiteSpace(request.Model))
             {
                 product.Model = request.Model.Trim();
+            }
+
+            // Either half of the natural key may have just moved, so re-check the pair.
+            var collides = await _context.Products
+                .AnyAsync(p => p.Id != product.Id
+                    && p.BrandId == product.BrandId
+                    && p.Model == product.Model);
+            if (collides)
+            {
+                return Conflict($"This brand already has a product called \"{product.Model}\".");
             }
 
             if (request.Dimensions != null)
