@@ -154,6 +154,22 @@
   },
   {
     "ContainingType": "ProposalStudio.Controllers.ApprovalsController",
+    "Method": "RequestHighValue",
+    "RelativePath": "api/approvals/high-value",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "body",
+        "Type": "ProposalStudio.Controllers.BelowFloorRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ApprovalsController",
     "Method": "GetPending",
     "RelativePath": "api/approvals/pending",
     "HttpMethod": "GET",

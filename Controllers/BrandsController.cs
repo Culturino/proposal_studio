@@ -32,7 +32,11 @@ namespace ProposalStudio.Controllers
                     b.Id,
                     b.Name,
                     b.Blurb,
-                    b.LogoAssetId
+                    b.LogoAssetId,
+                    ProductCount = _context.Products.Count(p =>
+                        p.BrandId == b.Id && p.Status != "archived" && p.Status != "deleted"),
+                    b.CreatedAt,
+                    b.UpdatedAt
                 })
                 .ToListAsync();
 
@@ -64,6 +68,7 @@ namespace ProposalStudio.Controllers
 
         // POST: api/brands
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateBrand([FromBody] CreateBrandRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
@@ -71,11 +76,26 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Brand name is required.");
             }
 
+            var business = await _context.Businesses
+                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
+            if (business == null)
+            {
+                return BadRequest("Default business was not found.");
+            }
+
+            var name = request.Name.Trim();
+            var duplicate = await _context.Brands
+                .AnyAsync(b => b.BusinessId == business.Id && b.Name == name);
+            if (duplicate)
+            {
+                return Conflict($"A brand called \"{name}\" already exists.");
+            }
+
             var brand = new Brand
             {
                 Id = Guid.NewGuid(),
-                BusinessId = request.BusinessId,
-                Name = request.Name.Trim(),
+                BusinessId = request.BusinessId == Guid.Empty ? business.Id : request.BusinessId,
+                Name = name,
                 Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
                 LogoAssetId = request.LogoAssetId,
                 CreatedAt = DateTimeOffset.UtcNow,
@@ -91,6 +111,7 @@ namespace ProposalStudio.Controllers
 
         // PATCH: api/brands/{id}
         [HttpPatch("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateBrand(Guid id, [FromBody] UpdateBrandRequest request)
         {
             var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Id == id);
@@ -108,6 +129,15 @@ namespace ProposalStudio.Controllers
                 {
                     brand.Name = request.Name.Trim();
                 }
+            }
+
+            var collides = await _context.Brands
+                .AnyAsync(b => b.Id != brand.Id
+                    && b.BusinessId == brand.BusinessId
+                    && b.Name == brand.Name);
+            if (collides)
+            {
+                return Conflict($"A brand called \"{brand.Name}\" already exists.");
             }
 
             if (request.Blurb != null)
@@ -131,6 +161,7 @@ namespace ProposalStudio.Controllers
 
         // DELETE: api/brands/{id}
         [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteBrand(Guid id)
         {
             var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Id == id);
@@ -138,6 +169,14 @@ namespace ProposalStudio.Controllers
             if (brand == null)
             {
                 return NotFound("Brand not found");
+            }
+
+            var inUse = await _context.Products.CountAsync(p =>
+                p.BrandId == id && p.Status != "deleted");
+            if (inUse > 0)
+            {
+                return Conflict(
+                    $"\"{brand.Name}\" still has {inUse} product{(inUse == 1 ? "" : "s")}. Move or delete those first.");
             }
 
             var before = AuditService.BrandSnapshot(brand);

@@ -15,11 +15,13 @@ namespace ProposalStudio.Controllers
     {
         private readonly AppDbContext _context;
         private readonly PricingGovernance _pricing;
+        private readonly AuditService _audit;
 
-        public ApprovalsController(AppDbContext context, PricingGovernance pricing)
+        public ApprovalsController(AppDbContext context, PricingGovernance pricing, AuditService audit)
         {
             _context = context;
             _pricing = pricing;
+            _audit = audit;
         }
 
         // POST: api/approvals/below-floor — advisor requests manager/admin permission
@@ -82,7 +84,6 @@ namespace ProposalStudio.Controllers
                 });
             }
 
-            var requester = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId);
             var floor = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent);
 
             var request = new ApprovalRequest
@@ -100,34 +101,15 @@ namespace ProposalStudio.Controllers
             };
 
             _context.ApprovalRequests.Add(request);
-
-            var managers = await _context.Users
-                .Where(u => u.Active && (u.Role.ToLower() == "admin" || u.Role.ToLower() == "manager"))
-                .Select(u => u.Id)
-                .ToListAsync();
-
-            var title = "Below-floor price approval";
-            var bodyText =
-                $"{requester?.Name ?? "An advisor"} requests approval to send {proposal.Reference} " +
-                $"at {proposal.Currency} {(offered ?? 0):N0} " +
-                $"(floor {proposal.Currency} {(floor ?? 0):N0}).";
-
-            foreach (var managerId in managers.Where(id => id != userId))
-            {
-                _context.Notifications.Add(new AppNotification
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = managerId,
-                    Title = title,
-                    Body = bodyText,
-                    Kind = "below_floor_approval",
-                    RelatedId = request.Id,
-                    Read = false,
-                    CreatedAt = DateTimeOffset.UtcNow
-                });
-            }
-
             await _context.SaveChangesAsync();
+
+            await _audit.LogAsync(User, "request", "approval", request.Id, null, new
+            {
+                kind = "below_floor",
+                reference = proposal.Reference,
+                offered,
+                floor
+            });
 
             return Ok(new
             {
@@ -135,8 +117,94 @@ namespace ProposalStudio.Controllers
                 request.Status,
                 request.CreatedAt,
                 reused = false,
-                notified = managers.Count(id => id != userId),
-                message = "Managers and admins have been notified."
+                message = "Request logged. A manager can approve it from the bell."
+            });
+        }
+
+        // POST: api/approvals/high-value — spec §5.6, deals at/above the threshold
+        [HttpPost("high-value")]
+        public async Task<IActionResult> RequestHighValue([FromBody] BelowFloorRequest body)
+        {
+            if (body.ProposalId == Guid.Empty)
+                return BadRequest("ProposalId is required.");
+
+            var userId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid)
+                ? uid
+                : (Guid?)null;
+            if (userId == null)
+                return Unauthorized();
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == body.ProposalId);
+            if (proposal == null)
+                return NotFound("Proposal was not found.");
+
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            if (role is not ("Admin" or "Manager") && proposal.AdvisorId != userId)
+                return Forbid();
+
+            var item = await _context.ProposalItems.FirstOrDefaultAsync(i => i.ProposalId == proposal.Id);
+            if (item == null)
+                return BadRequest("Add an instrument before requesting approval.");
+
+            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
+            if (!_pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold))
+            {
+                return BadRequest(new
+                {
+                    error = "not_high_value",
+                    message = "This offer is below the high-value threshold — no approval is needed."
+                });
+            }
+
+            var existing = await _context.ApprovalRequests
+                .Where(a => a.ProposalId == proposal.Id && a.Kind == "high_value" && a.Status == "pending")
+                .OrderByDescending(a => a.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (existing != null)
+            {
+                return Ok(new
+                {
+                    existing.Id,
+                    existing.Status,
+                    existing.CreatedAt,
+                    reused = true,
+                    message = "An approval request is already pending for this proposal."
+                });
+            }
+
+            var request = new ApprovalRequest
+            {
+                Id = Guid.NewGuid(),
+                ProposalId = proposal.Id,
+                Kind = "high_value",
+                RequestedBy = userId.Value,
+                Status = "pending",
+                OfferedPrice = proposal.PriceTotal,
+                FloorPrice = gov.HighValueThreshold,
+                CatalogPrice = proposal.PriceTotal,
+                Message = string.IsNullOrWhiteSpace(body.Message) ? null : body.Message.Trim(),
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+
+            _context.ApprovalRequests.Add(request);
+            await _context.SaveChangesAsync();
+
+            await _audit.LogAsync(User, "request", "approval", request.Id, null, new
+            {
+                kind = "high_value",
+                reference = proposal.Reference,
+                offered = proposal.PriceTotal,
+                threshold = gov.HighValueThreshold
+            });
+
+            return Ok(new
+            {
+                request.Id,
+                request.Status,
+                request.CreatedAt,
+                reused = false,
+                message = "Request logged. A manager can approve it from the bell."
             });
         }
 
@@ -147,7 +215,7 @@ namespace ProposalStudio.Controllers
         {
             var rows = await (
                 from a in _context.ApprovalRequests
-                where a.Status == "pending" && a.Kind == "below_floor"
+                where a.Status == "pending" && (a.Kind == "below_floor" || a.Kind == "high_value")
                 join p in _context.Proposals on a.ProposalId equals p.Id
                 join u in _context.Users on a.RequestedBy equals u.Id
                 join c in _context.Clients on p.ClientId equals c.Id into clients
@@ -217,40 +285,48 @@ namespace ProposalStudio.Controllers
                 ? aid
                 : (Guid?)null;
 
+            var note = string.IsNullOrWhiteSpace(body.Message) ? null : body.Message.Trim();
+
             request.Status = decision;
             request.ApproverId = approverId;
             request.DecidedAt = DateTimeOffset.UtcNow;
-
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == request.ProposalId);
-            var approver = approverId == null
-                ? null
-                : await _context.Users.FirstOrDefaultAsync(u => u.Id == approverId);
-
-            if (proposal != null)
+            if (note != null)
             {
-                _context.Notifications.Add(new AppNotification
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = request.RequestedBy,
-                    Title = decision == "approved" ? "Below-floor approved" : "Below-floor rejected",
-                    Body = decision == "approved"
-                        ? $"{approver?.Name ?? "A manager"} approved {proposal.Reference}. You can send or share it now."
-                        : $"{approver?.Name ?? "A manager"} rejected the below-floor request for {proposal.Reference}.",
-                    Kind = "below_floor_decision",
-                    RelatedId = request.Id,
-                    Read = false,
-                    CreatedAt = DateTimeOffset.UtcNow
-                });
+                request.Message = string.IsNullOrWhiteSpace(request.Message)
+                    ? note
+                    : $"{request.Message}\n— Decision: {note}";
             }
 
-            // Mark related manager notifications as read
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == request.ProposalId);
+
+            // The request has been dealt with — drop every notification it produced.
             var related = await _context.Notifications
-                .Where(n => n.RelatedId == request.Id && n.Kind == "below_floor_approval" && !n.Read)
+                .Where(n => n.RelatedId == request.Id)
                 .ToListAsync();
-            foreach (var n in related)
-                n.Read = true;
+            _context.Notifications.RemoveRange(related);
 
             await _context.SaveChangesAsync();
+
+            await _audit.LogAsync(
+                User,
+                decision == "approved" ? "approve" : "reject",
+                "approval",
+                request.Id,
+                new
+                {
+                    status = "pending",
+                    kind = request.Kind,
+                    reference = proposal?.Reference,
+                    offered = request.OfferedPrice
+                },
+                new
+                {
+                    status = decision,
+                    kind = request.Kind,
+                    reference = proposal?.Reference,
+                    offered = request.OfferedPrice,
+                    note
+                });
 
             return Ok(new
             {
@@ -271,5 +347,6 @@ namespace ProposalStudio.Controllers
     public class DecideRequest
     {
         public string Status { get; set; } = string.Empty;
+        public string? Message { get; set; }
     }
 }

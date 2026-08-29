@@ -9,7 +9,7 @@ namespace ProposalStudio.Models
         /// <summary>Max discount off retail before send is blocked (Phase 1).</summary>
         public decimal DiscountFloorPercent { get; set; } = 8m;
 
-        /// <summary>Proposals at or above this total need manager approval (Phase 2).</summary>
+        /// <summary>Spec §5.6: proposals at or above this total need manager approval before send/share.</summary>
         public decimal HighValueThreshold { get; set; } = 1_000_000m;
 
         public string VatDefaultMode { get; set; } = "line";

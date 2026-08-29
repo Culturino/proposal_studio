@@ -206,6 +206,42 @@
         }
       }
     },
+    "/api/approvals/high-value": {
+      "post": {
+        "tags": [
+          "Approvals"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/BelowFloorRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BelowFloorRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BelowFloorRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/BelowFloorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/approvals/pending": {
       "get": {
         "tags": [
@@ -2396,6 +2432,10 @@
         "type": "object",
         "properties": {
           "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
             "type": "string",
             "nullable": true
           }

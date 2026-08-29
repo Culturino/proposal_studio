@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SkiaSharp;
 
 namespace ProposalStudio.Services
@@ -5,13 +6,13 @@ namespace ProposalStudio.Services
     /// <summary>
     /// Owns the product image files under wwwroot/images/products.
     ///
-    /// Layout is a filename convention rather than a database table, because the PDF renderer
-    /// and the public image endpoint already resolve images that way:
+    ///   {id}-main-profile.png     full profile (hero), full resolution — used by the PDF
+    ///   {id}-additional-1.png     additional view
+    ///   {id}-additional-2.png     additional view
+    ///   thumbs/{id}-*.png         downscaled copies for catalog and admin listings
     ///
-    ///   {id}.png            full profile (hero), full resolution — used by the PDF
-    ///   {id}-2.png          additional view
-    ///   {id}-3.png          additional view
-    ///   thumbs/{id}*.png    downscaled copies for catalog and admin listings
+    /// Older builds wrote {id}.png / {id}-2.png / {id}-3.png. Those names are still
+    /// resolved on read and promoted to the names above the first time the store runs.
     ///
     /// Uploads are decoded and re-encoded rather than written through, so whatever lands on
     /// disk is a real image and not merely a file that was named like one.
@@ -26,29 +27,56 @@ namespace ProposalStudio.Services
 
         private static readonly int[] ValidSlots = { 1, 2, 3 };
 
-        private readonly string _root;
+        private static readonly Regex ProductFileName = new(
+            @"^(?<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"
+            + @"(?:-(?:2|3|main-profile|additional-1|additional-2))?\.png$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        public ProductImageStore(IWebHostEnvironment environment)
+        private readonly string _root;
+        private readonly ILogger<ProductImageStore> _logger;
+
+        public ProductImageStore(IWebHostEnvironment environment, ILogger<ProductImageStore> logger)
         {
             var webRoot = environment.WebRootPath
                 ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
 
             _root = Path.Combine(webRoot, "images", "products");
+            _logger = logger;
         }
 
         public static bool IsValidSlot(int slot) => ValidSlots.Contains(slot);
 
-        /// <summary>Slot 1 is the hero and keeps the bare id so existing links stay valid.</summary>
-        private static string FileName(Guid productId, int slot) =>
+        public static string SlotLabel(int slot) => slot switch
+        {
+            1 => "main-profile",
+            2 => "additional-1",
+            3 => "additional-2",
+            _ => throw new ArgumentOutOfRangeException(nameof(slot), "Slot must be 1, 2 or 3.")
+        };
+
+        public static string FileName(Guid productId, int slot) =>
+            $"{productId}-{SlotLabel(slot)}.png";
+
+        private static string LegacyFileName(Guid productId, int slot) =>
             slot == 1 ? $"{productId}.png" : $"{productId}-{slot}.png";
 
+        /// <summary>Where a new write goes. Prefer <see cref="ResolveFullPath"/> when reading.</summary>
         public string FullPath(Guid productId, int slot) =>
             Path.Combine(_root, FileName(productId, slot));
 
         public string ThumbnailPath(Guid productId, int slot) =>
             Path.Combine(_root, "thumbs", FileName(productId, slot));
 
-        public bool Exists(Guid productId, int slot) => File.Exists(FullPath(productId, slot));
+        public string? ResolveFullPath(Guid productId, int slot)
+        {
+            var canonical = FullPath(productId, slot);
+            if (File.Exists(canonical)) return canonical;
+
+            var legacy = Path.Combine(_root, LegacyFileName(productId, slot));
+            return File.Exists(legacy) ? legacy : null;
+        }
+
+        public bool Exists(Guid productId, int slot) => ResolveFullPath(productId, slot) != null;
 
         /// <summary>
         /// Decodes the upload, writes the full-resolution PNG and its thumbnail, and reports
@@ -69,21 +97,29 @@ namespace ProposalStudio.Services
             Directory.CreateDirectory(_root);
             Directory.CreateDirectory(Path.Combine(_root, "thumbs"));
 
+            var dest = FullPath(productId, slot);
             using (var image = SKImage.FromBitmap(bitmap))
             using (var encoded = image.Encode(SKEncodedImageFormat.Png, 100))
-            await using (var file = File.Create(FullPath(productId, slot)))
+            await using (var file = File.Create(dest))
             {
                 encoded.SaveTo(file);
             }
 
             WriteThumbnail(bitmap, ThumbnailPath(productId, slot));
+            DeleteLegacy(productId, slot);
 
             return ImageSaveResult.Saved(bitmap.Width, bitmap.Height, HasTransparency(bitmap));
         }
 
         public void Delete(Guid productId, int slot)
         {
-            foreach (var path in new[] { FullPath(productId, slot), ThumbnailPath(productId, slot) })
+            foreach (var path in new[]
+            {
+                FullPath(productId, slot),
+                Path.Combine(_root, LegacyFileName(productId, slot)),
+                ThumbnailPath(productId, slot),
+                Path.Combine(_root, "thumbs", LegacyFileName(productId, slot))
+            })
             {
                 if (File.Exists(path))
                     File.Delete(path);
@@ -97,14 +133,18 @@ namespace ProposalStudio.Services
         /// </summary>
         public string? ResolveThumbnail(Guid productId, int slot)
         {
-            var thumb = ThumbnailPath(productId, slot);
-            var full = FullPath(productId, slot);
-
-            if (!File.Exists(full))
+            var full = ResolveFullPath(productId, slot);
+            if (full == null)
                 return null;
+
+            var thumb = ThumbnailPath(productId, slot);
+            var legacyThumb = Path.Combine(_root, "thumbs", LegacyFileName(productId, slot));
 
             if (File.Exists(thumb) && File.GetLastWriteTimeUtc(thumb) >= File.GetLastWriteTimeUtc(full))
                 return thumb;
+
+            if (File.Exists(legacyThumb) && File.GetLastWriteTimeUtc(legacyThumb) >= File.GetLastWriteTimeUtc(full))
+                return legacyThumb;
 
             using var bitmap = SKBitmap.Decode(full);
             if (bitmap == null)
@@ -113,6 +153,113 @@ namespace ProposalStudio.Services
             Directory.CreateDirectory(Path.GetDirectoryName(thumb)!);
             WriteThumbnail(bitmap, thumb);
             return thumb;
+        }
+
+        /// <summary>
+        /// Promotes leftover {id}.png / {id}-2.png names, then copies each hero into empty
+        /// additional slots so existing catalog rows have three views without a manual re-upload.
+        /// Already-filled additional slots are left alone.
+        /// </summary>
+        public void AdoptExisting()
+        {
+            Directory.CreateDirectory(_root);
+            Directory.CreateDirectory(Path.Combine(_root, "thumbs"));
+
+            var ids = DiscoverProductIds();
+            var copied = 0;
+            var renamed = 0;
+
+            foreach (var id in ids)
+            {
+                foreach (var slot in ValidSlots)
+                {
+                    if (PromoteSlot(id, slot))
+                        renamed++;
+                }
+
+                var hero = ResolveFullPath(id, 1);
+                if (hero == null)
+                    continue;
+
+                foreach (var slot in new[] { 2, 3 })
+                {
+                    if (Exists(id, slot))
+                        continue;
+
+                    File.Copy(hero, FullPath(id, slot));
+
+                    var heroThumb = ResolveThumbnail(id, 1);
+                    if (heroThumb != null && File.Exists(heroThumb))
+                        File.Copy(heroThumb, ThumbnailPath(id, slot), overwrite: true);
+
+                    copied++;
+                }
+            }
+
+            if (renamed > 0 || copied > 0)
+            {
+                _logger.LogInformation(
+                    "Product images: renamed {Renamed} files to the slot names, copied the hero into {Copied} empty additional slots.",
+                    renamed, copied);
+            }
+        }
+
+        private bool PromoteSlot(Guid productId, int slot)
+        {
+            var canonical = FullPath(productId, slot);
+            var legacy = Path.Combine(_root, LegacyFileName(productId, slot));
+            var moved = MoveIfNeeded(legacy, canonical);
+
+            var canonicalThumb = ThumbnailPath(productId, slot);
+            var legacyThumb = Path.Combine(_root, "thumbs", LegacyFileName(productId, slot));
+            moved = MoveIfNeeded(legacyThumb, canonicalThumb) || moved;
+
+            return moved;
+        }
+
+        private static bool MoveIfNeeded(string from, string to)
+        {
+            if (!File.Exists(from) || string.Equals(from, to, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (File.Exists(to))
+            {
+                File.Delete(from);
+                return true;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+            File.Move(from, to);
+            return true;
+        }
+
+        private void DeleteLegacy(Guid productId, int slot)
+        {
+            foreach (var path in new[]
+            {
+                Path.Combine(_root, LegacyFileName(productId, slot)),
+                Path.Combine(_root, "thumbs", LegacyFileName(productId, slot))
+            })
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+        }
+
+        private HashSet<Guid> DiscoverProductIds()
+        {
+            var ids = new HashSet<Guid>();
+            if (!Directory.Exists(_root))
+                return ids;
+
+            foreach (var file in Directory.EnumerateFiles(_root, "*.png"))
+            {
+                var match = ProductFileName.Match(Path.GetFileName(file));
+                if (match.Success && Guid.TryParse(match.Groups["id"].Value, out var id))
+                    ids.Add(id);
+            }
+
+            return ids;
         }
 
         private static void WriteThumbnail(SKBitmap source, string destination)

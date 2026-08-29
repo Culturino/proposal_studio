@@ -451,7 +451,9 @@ namespace ProposalStudio.Controllers
 
             var offered = item.PriceOverride ?? item.UnitPrice;
             var belowFloor = _pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent);
-            var approval = await GetLatestBelowFloorApprovalAsync(id);
+            var highValue = _pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold);
+            var approval = await GetLatestApprovalAsync(id, "below_floor");
+            var highValueApproval = await GetLatestApprovalAsync(id, "high_value");
 
             return Ok(new
             {
@@ -480,11 +482,14 @@ namespace ProposalStudio.Controllers
                     FloorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
                     CatalogAmount = catalogAmount,
                     DiscountFloorPercent = gov.DiscountFloorPercent,
-                    HighValue = _pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold),
+                    HighValue = highValue,
                     gov.HighValueThreshold,
                     ApprovalStatus = approval?.Status,
                     ApprovalId = approval?.Id,
-                    FloorApproved = approval?.Status == "approved"
+                    FloorApproved = approval?.Status == "approved",
+                    HighValueApprovalStatus = highValueApproval?.Status,
+                    HighValueApprovalId = highValueApproval?.Id,
+                    HighValueApproved = highValueApproval?.Status == "approved"
                 }
             });
         }
@@ -565,23 +570,10 @@ namespace ProposalStudio.Controllers
                 .Select(p => p.Amount)
                 .FirstOrDefaultAsync();
 
-            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
-            var offered = item.PriceOverride ?? item.UnitPrice;
-            var role = User.FindFirstValue(ClaimTypes.Role);
-            var canApprove = role is "Admin" or "Manager";
-            var floorApproved = await HasApprovedBelowFloorAsync(id, offered);
-
-            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove && !floorApproved)
+            var blocked = await GovernanceSendBlockAsync(proposal, item, catalogAmount);
+            if (blocked != null)
             {
-                return BadRequest(new
-                {
-                    error = "below_floor",
-                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Request manager approval before sending.",
-                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
-                    catalogAmount,
-                    offered,
-                    canRequestApproval = true
-                });
+                return blocked;
             }
 
             await _pdf.RefreshContentAsync(_context, id);
@@ -631,21 +623,10 @@ namespace ProposalStudio.Controllers
                 .Select(p => p.Amount)
                 .FirstOrDefaultAsync();
 
-            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
-            var offered = item.PriceOverride ?? item.UnitPrice;
-            var role = User.FindFirstValue(ClaimTypes.Role);
-            var canApprove = role is "Admin" or "Manager";
-            var floorApproved = await HasApprovedBelowFloorAsync(id, offered);
-
-            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent) && !canApprove && !floorApproved)
+            var blocked = await GovernanceSendBlockAsync(proposal, item, catalogAmount, sharing: true);
+            if (blocked != null)
             {
-                return BadRequest(new
-                {
-                    error = "below_floor",
-                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Request manager approval before sharing.",
-                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
-                    canRequestApproval = true
-                });
+                return blocked;
             }
 
             // Refresh content snapshot; PDF is rendered on demand for share viewers
@@ -857,17 +838,65 @@ namespace ProposalStudio.Controllers
             return NoContent();
         }
 
-        private async Task<ApprovalRequest?> GetLatestBelowFloorApprovalAsync(Guid proposalId)
+        /// <summary>
+        /// Spec §5.6: advisors cannot send or share a below-floor offer, or a deal at/above
+        /// the high-value threshold, without manager/admin approval.
+        /// </summary>
+        private async Task<IActionResult?> GovernanceSendBlockAsync(
+            Proposal proposal,
+            ProposalItem item,
+            decimal? catalogAmount,
+            bool sharing = false)
+        {
+            var gov = await _pricing.GetForBusinessAsync(proposal.BusinessId);
+            var offered = item.PriceOverride ?? item.UnitPrice;
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var canApprove = role is "Admin" or "Manager";
+            var verb = sharing ? "sharing" : "sending";
+
+            if (_pricing.IsBelowFloor(offered, catalogAmount, gov.DiscountFloorPercent)
+                && !canApprove
+                && !await HasApprovedAsync(proposal.Id, "below_floor", offered))
+            {
+                return BadRequest(new
+                {
+                    error = "below_floor",
+                    message = $"Price is below the {gov.DiscountFloorPercent}% discount floor. Request manager approval before {verb}.",
+                    floorUnitPrice = _pricing.FloorUnitPrice(catalogAmount, gov.DiscountFloorPercent),
+                    catalogAmount,
+                    offered,
+                    canRequestApproval = true
+                });
+            }
+
+            if (_pricing.IsHighValue(proposal.PriceTotal, gov.HighValueThreshold)
+                && !canApprove
+                && !await HasApprovedAsync(proposal.Id, "high_value", proposal.PriceTotal))
+            {
+                return BadRequest(new
+                {
+                    error = "high_value",
+                    message = $"This proposal is at or above the {proposal.Currency} {gov.HighValueThreshold:N0} high-value threshold. Request manager approval before {verb}.",
+                    highValueThreshold = gov.HighValueThreshold,
+                    total = proposal.PriceTotal,
+                    canRequestApproval = true
+                });
+            }
+
+            return null;
+        }
+
+        private async Task<ApprovalRequest?> GetLatestApprovalAsync(Guid proposalId, string kind)
         {
             return await _context.ApprovalRequests
-                .Where(a => a.ProposalId == proposalId && a.Kind == "below_floor")
+                .Where(a => a.ProposalId == proposalId && a.Kind == kind)
                 .OrderByDescending(a => a.CreatedAt)
                 .FirstOrDefaultAsync();
         }
 
-        private async Task<bool> HasApprovedBelowFloorAsync(Guid proposalId, decimal? offered)
+        private async Task<bool> HasApprovedAsync(Guid proposalId, string kind, decimal? offered)
         {
-            var latest = await GetLatestBelowFloorApprovalAsync(proposalId);
+            var latest = await GetLatestApprovalAsync(proposalId, kind);
             if (latest == null || latest.Status != "approved")
                 return false;
 

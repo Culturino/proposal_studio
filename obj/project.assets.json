@@ -3570,7 +3570,7 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\ACER\\.nuget\\packages\\": {},
+    "C:\\Users\\ACER\\.nuget\\packages": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
@@ -3579,7 +3579,7 @@
       "projectUniqueName": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj",
       "projectName": "ProposalStudio",
       "projectPath": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\ProposalStudio.csproj",
-      "packagesPath": "C:\\Users\\ACER\\.nuget\\packages\\",
+      "packagesPath": "C:\\Users\\ACER\\.nuget\\packages",
       "outputPath": "C:\\Users\\ACER\\Desktop\\inter\\files\\ProposalStudio\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [

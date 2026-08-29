@@ -52,6 +52,52 @@ namespace ProposalStudio.Services
             await _db.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// One-shot: leftover inbox rows become audit entries, then the inbox is emptied.
+        /// Safe to call on every boot — a second pass finds nothing.
+        /// </summary>
+        public async Task<int> ArchiveNotificationsAsync()
+        {
+            var notes = await _db.Notifications.OrderBy(n => n.CreatedAt).ToListAsync();
+            if (notes.Count == 0)
+                return 0;
+
+            foreach (var note in notes)
+            {
+                var kind = note.Kind ?? "";
+                var action = kind switch
+                {
+                    "below_floor_approval" or "high_value_approval" => "request",
+                    "below_floor_decision" or "high_value_decision" =>
+                        note.Title.Contains("approved", StringComparison.OrdinalIgnoreCase) ? "approve" : "reject",
+                    _ => "notify"
+                };
+                var entity = kind.Contains("floor") || kind.Contains("high_value") || kind.Contains("approval")
+                    ? "approval"
+                    : "notification";
+
+                _db.AuditLogs.Add(new AuditLog
+                {
+                    Id = Guid.NewGuid(),
+                    ActorId = note.UserId,
+                    Action = action,
+                    Entity = entity,
+                    EntityId = note.RelatedId ?? note.Id,
+                    After = ToJson(new
+                    {
+                        title = note.Title,
+                        body = note.Body,
+                        kind = note.Kind
+                    }),
+                    OccurredAt = note.CreatedAt
+                });
+            }
+
+            _db.Notifications.RemoveRange(notes);
+            await _db.SaveChangesAsync();
+            return notes.Count;
+        }
+
         public static JsonDocument? ToJson(object? value)
         {
             if (value == null) return null;

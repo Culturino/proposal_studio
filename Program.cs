@@ -118,6 +118,19 @@ using (var scope = app.Services.CreateScope())
     {
         logger.LogError(ex, "Database seed failed — API will still start");
     }
+
+    try
+    {
+        var archived = await scope.ServiceProvider
+            .GetRequiredService<AuditService>()
+            .ArchiveNotificationsAsync();
+        if (archived > 0)
+            logger.LogInformation("Moved {Count} leftover notifications into the audit log.", archived);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Notification archive failed — API will still start");
+    }
 }
 
 // -------------------- PIPELINE --------------------
@@ -134,6 +147,7 @@ app.UseHttpsRedirection();
 // middleware runs before UseAuthentication so catalog images load for login prefetch.
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "images", "products"));
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "pdfs"));
+app.Services.GetRequiredService<ProductImageStore>().AdoptExisting();
 
 app.UseStaticFiles(new StaticFileOptions
 {

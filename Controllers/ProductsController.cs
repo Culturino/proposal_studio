@@ -181,7 +181,7 @@ namespace ProposalStudio.Controllers
 
             var path = wantsThumbnail
                 ? _images.ResolveThumbnail(id, slot)
-                : _images.FullPath(id, slot);
+                : _images.ResolveFullPath(id, slot);
 
             if (path == null || !System.IO.File.Exists(path))
             {
@@ -200,6 +200,8 @@ namespace ProposalStudio.Controllers
 
             Response.Headers.ETag = etag;
             Response.Headers.CacheControl = "public, max-age=60, must-revalidate";
+            Response.Headers.ContentDisposition =
+                $"inline; filename=\"{ProductImageStore.FileName(id, slot)}\"";
 
             return PhysicalFile(path, "image/png");
         }

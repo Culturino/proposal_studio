@@ -84,8 +84,11 @@ namespace ProposalStudio.Services
 
         private static bool _fontsReady;
 
-        public ProposalPdfService()
+        private readonly ProductImageStore? _images;
+
+        public ProposalPdfService(ProductImageStore? images = null)
         {
+            _images = images;
             QuestPDF.Settings.License = LicenseType.Community;
             EnsureTemplateFonts();
         }
@@ -148,11 +151,9 @@ namespace ProposalStudio.Services
         {
             var vatHint = model.VatMode == "none" ? "Prices as quoted" : "VAT as applicable";
 
-            var monthYear = model.IssuedAt.ToString("MMMM yyyy", CultureInfo.InvariantCulture);
             var finishLine = string.IsNullOrWhiteSpace(model.Finish) ? "—" : model.Finish!;
             var modelFinishHeader = $"{model.Model} · {finishLine}".ToUpperInvariant();
             var contactCompact = $"{model.Phone}    ·    {model.Website}    ·    {model.Instagram}";
-            var coverMeta = $"Dubai  ·  {monthYear}  ·  Ref. {model.Reference}";
 
             var dimRows = model.Dimensions.Count > 0
                 ? OrderDimensions(model.Dimensions)
@@ -222,7 +223,6 @@ namespace ProposalStudio.Services
                                 .Style(Italic(13.7f, GoldLight));
 
                         At(l, MarginX, 502.9f).Text(contactCompact).Style(Contact(9.4f, MutedDark));
-                        AtRight(l, 894.5f, 503.2f).Text(coverMeta).Style(Contact(9.4f, Faint));
                     });
                 });
 
@@ -542,24 +542,27 @@ namespace ProposalStudio.Services
         }
 
         /// <summary>
-        /// Three gallery slots: the primary render plus optional "-2"/"-3" siblings on disk,
-        /// falling back to the primary so the page never shows empty frames.
+        /// Three gallery slots from the image store, falling back to the hero so the page
+        /// never shows empty frames.
         /// </summary>
-        private static string?[] GalleryPaths(ProposalPdfModel model)
+        private string?[] GalleryPaths(ProposalPdfModel model)
         {
+            if (model.ProductId is Guid productId && _images != null)
+            {
+                var hero = _images.ResolveFullPath(productId, 1);
+                return new string?[]
+                {
+                    hero,
+                    _images.ResolveFullPath(productId, 2) ?? hero,
+                    _images.ResolveFullPath(productId, 3) ?? hero
+                };
+            }
+
             var primary = model.ProductImagePath;
             if (string.IsNullOrWhiteSpace(primary) || !File.Exists(primary))
                 return new string?[] { null, null, null };
 
-            string Variant(string suffix)
-            {
-                var dir = Path.GetDirectoryName(primary)!;
-                var candidate = Path.Combine(dir,
-                    $"{Path.GetFileNameWithoutExtension(primary)}{suffix}{Path.GetExtension(primary)}");
-                return File.Exists(candidate) ? candidate : primary;
-            }
-
-            return new string?[] { primary, Variant("-2"), Variant("-3") };
+            return new string?[] { primary, primary, primary };
         }
 
         private static string? BrandAsset(string fileName)
@@ -723,17 +726,18 @@ namespace ProposalStudio.Services
         /// Re-resolve product image from disk using ProductId when the stored path is stale.
         /// Text/pricing content always comes from the snapshot.
         /// </summary>
-        private static ProposalPdfModel WithResolvedImage(ProposalPdfModel model)
+        private ProposalPdfModel WithResolvedImage(ProposalPdfModel model)
         {
             if (!string.IsNullOrWhiteSpace(model.ProductImagePath) && File.Exists(model.ProductImagePath))
                 return model;
 
             if (model.ProductId is Guid productId)
             {
-                var path = Path.Combine(
-                    Directory.GetCurrentDirectory(),
-                    "wwwroot", "images", "products",
-                    $"{productId}.png");
+                var path = _images?.ResolveFullPath(productId, 1)
+                    ?? Path.Combine(
+                        Directory.GetCurrentDirectory(),
+                        "wwwroot", "images", "products",
+                        ProductImageStore.FileName(productId, 1));
                 if (File.Exists(path))
                     return model with { ProductImagePath = path };
             }
@@ -815,10 +819,13 @@ namespace ProposalStudio.Services
 
             var dimensions = ReadDimensions(product.Dimensions);
 
-            var imagePath = Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "wwwroot", "images", "products",
-                $"{product.Id}.png");
+            var imagePath = _images?.ResolveFullPath(product.Id, 1)
+                ?? Path.Combine(
+                    Directory.GetCurrentDirectory(),
+                    "wwwroot", "images", "products",
+                    ProductImageStore.FileName(product.Id, 1));
+            if (!File.Exists(imagePath))
+                imagePath = null;
 
             var advisorTitle = advisor?.Role?.ToLowerInvariant() switch
             {
@@ -854,7 +861,9 @@ namespace ProposalStudio.Services
                 Website: "houseofpianos-uae.com",
                 Instagram: "@houseofpianosuae",
                 AddressLine: "Showroom 41, Street A, Al Quoz 1 (Opposite Al Serkal Avenue) · Dubai, United Arab Emirates",
-                ProductImagePath: File.Exists(imagePath) ? imagePath : null,
+                ProductImagePath: !string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath)
+                    ? imagePath
+                    : null,
                 IssuedAt: proposal.SentAt ?? proposal.UpdatedAt,
                 ProductId: product.Id
             );
