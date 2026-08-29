@@ -31,8 +31,9 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Email and password are required.");
             }
 
+            var email = request.Email.Trim().ToLowerInvariant();
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == request.Email && u.Active);
+                .FirstOrDefaultAsync(u => u.Active && u.Email != null && u.Email.ToLower() == email);
 
             if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash))
             {

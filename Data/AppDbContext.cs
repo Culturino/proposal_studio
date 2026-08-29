@@ -29,6 +29,7 @@ namespace ProposalStudio.Data
         public DbSet<ApprovalRequest> ApprovalRequests { get; set; }
         public DbSet<AppNotification> Notifications { get; set; }
         public DbSet<SeedMeta> SeedMeta { get; set; }
+        public DbSet<UserInvite> UserInvites { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -353,6 +354,22 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Key).HasColumnName("key");
                 entity.Property(e => e.Value).HasColumnName("value");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
+
+            modelBuilder.Entity<UserInvite>(entity =>
+            {
+                entity.ToTable("user_invites");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Token).HasColumnName("token");
+                entity.Property(e => e.Role).HasColumnName("role");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+                entity.Property(e => e.UsedAt).HasColumnName("used_at");
+                entity.Property(e => e.CreatedUserId).HasColumnName("created_user_id");
+                entity.Property(e => e.Revoked).HasColumnName("revoked");
+                entity.HasIndex(e => e.Token).IsUnique();
             });
         }
     }
