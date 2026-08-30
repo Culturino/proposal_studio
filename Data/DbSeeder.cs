@@ -28,7 +28,8 @@ namespace ProposalStudio.Data
             await EnsureTemplateAsync(db, business, now);
             await EnsureGovernanceAsync(db, business, now);
 
-            await SeedCatalogAsync(db, ledger, business, brands, categories, now);
+            if (options.SeedCatalog)
+                await SeedCatalogAsync(db, ledger, business, brands, categories, now);
             await SeedUsersAsync(db, ledger, business, options, logger, now);
 
             await RefreshBlurbsAsync(db, now);
@@ -265,7 +266,7 @@ namespace ProposalStudio.Data
         {
             if (options.DemoUsers)
             {
-                await SeedDemoUsersAsync(db, ledger, business, logger, now);
+                await SeedDemoUsersAsync(db, ledger, business, options, logger, now);
                 return;
             }
 
@@ -304,15 +305,20 @@ namespace ProposalStudio.Data
         }
 
         private static async Task SeedDemoUsersAsync(
-            AppDbContext db, SeedLedger ledger, Business business, ILogger logger, DateTimeOffset now)
+            AppDbContext db, SeedLedger ledger, Business business, SeedOptions options, ILogger logger, DateTimeOffset now)
         {
-            var demoUsers = new (string Name, string Email, string Role)[]
-            {
-                ("Shavkat Mamadjonov", "admin@houseofpianos.ae", "admin"),
-                ("Layla Haddad", "layla@houseofpianos.ae", "manager"),
-                ("Omar Khan", "omar@houseofpianos.ae", "advisor"),
-                ("Sara Idris", "sara@houseofpianos.ae", "advisor")
-            };
+            var demoUsers = options.DemoTeam
+                ? new (string Name, string Email, string Role)[]
+                {
+                    ("Shavkat Mamadjonov", "admin@houseofpianos.ae", "admin"),
+                    ("Layla Haddad", "layla@houseofpianos.ae", "manager"),
+                    ("Omar Khan", "omar@houseofpianos.ae", "advisor"),
+                    ("Sara Idris", "sara@houseofpianos.ae", "advisor")
+                }
+                : new (string Name, string Email, string Role)[]
+                {
+                    ("Shavkat Mamadjonov", "admin@houseofpianos.ae", "admin")
+                };
 
             var hash = BCrypt.Net.BCrypt.HashPassword("Password123!");
             var added = 0;

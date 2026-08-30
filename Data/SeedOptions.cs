@@ -15,6 +15,18 @@ namespace ProposalStudio.Data
         public bool DemoUsers { get; set; }
 
         /// <summary>
+        /// Also create Layla / Omar / Sara when <see cref="DemoUsers"/> is on.
+        /// Off in the Windows pack so only the admin account exists.
+        /// </summary>
+        public bool DemoTeam { get; set; } = true;
+
+        /// <summary>
+        /// Seed Steinway catalog products and addons. Off in the Windows pack —
+        /// those rows get new ids that do not match photos on disk.
+        /// </summary>
+        public bool SeedCatalog { get; set; } = true;
+
+        /// <summary>
         /// Sign-in address for the bootstrap administrator, used only when the users table is
         /// empty and <see cref="DemoUsers"/> is off. Supply via secrets, not appsettings.
         /// </summary>

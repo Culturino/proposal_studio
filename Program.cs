@@ -155,7 +155,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseHttpsRedirection();
+var packed = app.Environment.IsEnvironment("Pack");
+if (!packed)
+{
+    app.UseHttpsRedirection();
+}
 
 // Serve wwwroot (product images at /images/products/{id}.png) without auth —
 // middleware runs before UseAuthentication so catalog images load for login prefetch.
@@ -163,6 +167,7 @@ Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "pdfs"));
 app.Services.GetRequiredService<ProductImageStore>().AdoptExisting();
 
+app.UseDefaultFiles();
 app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = context =>
@@ -198,5 +203,10 @@ app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+if (packed)
+{
+    app.MapFallbackToFile("index.html").AllowAnonymous();
+}
 
 app.Run();
