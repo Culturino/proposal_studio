@@ -425,6 +425,84 @@
         }
       }
     },
+    "/api/brand-kit": {
+      "get": {
+        "tags": [
+          "BrandKit"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "BrandKit"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandKitRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandKitRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandKitRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBrandKitRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/brand-kit/logo": {
+      "post": {
+        "tags": [
+          "BrandKit"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "file": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/Brands": {
       "get": {
         "tags": [
@@ -2047,6 +2125,53 @@
         }
       }
     },
+    "/api/Proposals/{id}/status": {
+      "patch": {
+        "tags": [
+          "Proposals"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json-patch+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProposalStatusRequest"
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProposalStatusRequest"
+              }
+            },
+            "text/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProposalStatusRequest"
+              }
+            },
+            "application/*+json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProposalStatusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/p/{token}": {
       "get": {
         "tags": [
@@ -2137,6 +2262,18 @@
         }
       }
     },
+    "/api/templates/renderers": {
+      "get": {
+        "tags": [
+          "Template"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/templates": {
       "get": {
         "tags": [
@@ -2156,22 +2293,22 @@
           "content": {
             "application/json-patch+json": {
               "schema": {
-                "$ref": "#/components/schemas/Template"
+                "$ref": "#/components/schemas/CreateTemplateRequest"
               }
             },
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Template"
+                "$ref": "#/components/schemas/CreateTemplateRequest"
               }
             },
             "text/json": {
               "schema": {
-                "$ref": "#/components/schemas/Template"
+                "$ref": "#/components/schemas/CreateTemplateRequest"
               }
             },
             "application/*+json": {
               "schema": {
-                "$ref": "#/components/schemas/Template"
+                "$ref": "#/components/schemas/CreateTemplateRequest"
               }
             }
           }
@@ -2802,6 +2939,29 @@
         },
         "additionalProperties": false
       },
+      "CreateTemplateRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "key": {
+            "type": "string",
+            "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "active": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateUserRequest": {
         "type": "object",
         "properties": {
@@ -2875,45 +3035,12 @@
         },
         "additionalProperties": false
       },
-      "Template": {
+      "SetProposalStatusRequest": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "businessId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "key": {
+          "status": {
             "type": "string",
             "nullable": true
-          },
-          "name": {
-            "type": "string",
-            "nullable": true
-          },
-          "version": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "pageSchema": {
-            "nullable": true
-          },
-          "stylingLocked": {
-            "type": "boolean"
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
           }
         },
         "additionalProperties": false
@@ -2936,6 +3063,19 @@
           },
           "active": {
             "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateBrandKitRequest": {
+        "type": "object",
+        "properties": {
+          "colors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
             "nullable": true
           }
         },
@@ -3117,10 +3257,6 @@
       "UpdateProposalRequest": {
         "type": "object",
         "properties": {
-          "status": {
-            "type": "string",
-            "nullable": true
-          },
           "validityDays": {
             "type": "integer",
             "format": "int32",

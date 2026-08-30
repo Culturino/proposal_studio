@@ -241,6 +241,48 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "ProposalStudio.Controllers.BrandKitController",
+    "Method": "Get",
+    "RelativePath": "api/brand-kit",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BrandKitController",
+    "Method": "Update",
+    "RelativePath": "api/brand-kit",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.UpdateBrandKitRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.BrandKitController",
+    "Method": "UploadLogo",
+    "RelativePath": "api/brand-kit/logo",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "file",
+        "Type": "Microsoft.AspNetCore.Http.IFormFile",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "ProposalStudio.Controllers.BrandsController",
     "Method": "GetBrands",
     "RelativePath": "api/Brands",
@@ -1257,6 +1299,27 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "SetStatus",
+    "RelativePath": "api/Proposals/{id}/status",
+    "HttpMethod": "PATCH",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      },
+      {
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.SetProposalStatusRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "ProposalStudio.Controllers.TemplateController",
     "Method": "GetTemplates",
     "RelativePath": "api/templates",
@@ -1275,8 +1338,8 @@
     "Order": 0,
     "Parameters": [
       {
-        "Name": "template",
-        "Type": "ProposalStudio.Models.Template",
+        "Name": "request",
+        "Type": "ProposalStudio.Controllers.CreateTemplateRequest",
         "IsRequired": true
       }
     ],
@@ -1333,6 +1396,16 @@
         "IsRequired": true
       }
     ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.TemplateController",
+    "Method": "GetRenderers",
+    "RelativePath": "api/templates/renderers",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
     "ReturnTypes": []
   },
   {

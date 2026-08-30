@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Data
 {
@@ -26,6 +27,7 @@ namespace ProposalStudio.Data
             var brands = await EnsureBrandsAsync(db, business, now);
             var categories = await EnsureCategoriesAsync(db, business, now);
             await EnsureTemplateAsync(db, business, now);
+            await EnsureBrandKitAsync(db, business, now);
             await EnsureGovernanceAsync(db, business, now);
 
             if (options.SeedCatalog)
@@ -133,7 +135,7 @@ namespace ProposalStudio.Data
         private static async Task EnsureTemplateAsync(AppDbContext db, Business business, DateTimeOffset now)
         {
             var exists = await db.Templates.AnyAsync(
-                t => t.BusinessId == business.Id && t.Key == "piano_luxury" && t.Version == 1);
+                t => t.BusinessId == business.Id && t.Key == ProposalRendererCatalog.PianoLuxury && t.Version == 1);
             if (exists)
                 return;
 
@@ -141,16 +143,58 @@ namespace ProposalStudio.Data
             {
                 Id = Guid.NewGuid(),
                 BusinessId = business.Id,
-                Key = "piano_luxury",
+                Key = ProposalRendererCatalog.PianoLuxury,
                 Name = "Piano — Luxury",
                 Version = 1,
-                PageSchema = JsonDocument.Parse(
-                    """{"pages":["cover","instrument","gallery","specs","investment","closing"]}"""),
+                PageSchema = BrandStyleService.MergeSchema(
+                    JsonDocument.Parse(
+                        """{"pages":["cover","instrument","gallery","specs","investment","closing"]}"""),
+                    PdfPalette.Defaults),
                 StylingLocked = true,
                 Active = true,
                 CreatedAt = now,
                 UpdatedAt = now
             });
+            await db.SaveChangesAsync();
+        }
+
+        /// <summary>
+        /// Current brand palette, plus colors on any active template that predates this.
+        /// Existing template rows are updated in place so already-issued proposals stay on v1.
+        /// </summary>
+        private static async Task EnsureBrandKitAsync(AppDbContext db, Business business, DateTimeOffset now)
+        {
+            var kit = await db.BrandKits.FirstOrDefaultAsync(k => k.BusinessId == business.Id);
+            var palette = PdfPalette.Defaults;
+            if (kit == null)
+            {
+                kit = new BrandKit
+                {
+                    Id = Guid.NewGuid(),
+                    BusinessId = business.Id,
+                    Colors = JsonSerializer.SerializeToDocument(palette.ToMap()),
+                    UpdatedAt = now
+                };
+                db.BrandKits.Add(kit);
+                business.BrandKitId = kit.Id;
+                business.UpdatedAt = now;
+            }
+            else
+            {
+                palette = PdfPalette.FromJson(kit.Colors);
+            }
+
+            var templates = await db.Templates
+                .Where(t => t.BusinessId == business.Id && t.Active)
+                .ToListAsync();
+            foreach (var template in templates)
+            {
+                if (BrandStyleService.SchemaHasColors(template.PageSchema))
+                    continue;
+                template.PageSchema = BrandStyleService.MergeSchema(template.PageSchema, palette);
+                template.UpdatedAt = now;
+            }
+
             await db.SaveChangesAsync();
         }
 

@@ -21,6 +21,7 @@ namespace ProposalStudio.Data
 
         public DbSet<User> Users { get; set; }
         public DbSet<Template> Templates { get; set; }
+        public DbSet<BrandKit> BrandKits { get; set; }
         public DbSet<Proposal> Proposals { get; set; }
         public DbSet<ProposalItem> ProposalItems { get; set; }
         public DbSet<GovernanceSettings> GovernanceSettings { get; set; }
@@ -192,6 +193,21 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 
                 entity.HasIndex(e => e.Email).IsUnique();
+            });
+
+            modelBuilder.Entity<BrandKit>(entity =>
+            {
+                entity.ToTable("brand_kits");
+
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.BusinessId).HasColumnName("business_id");
+                entity.Property(e => e.Colors).HasColumnName("colors").HasColumnType("jsonb");
+                entity.Property(e => e.LogoFile).HasColumnName("logo_file");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+
+                entity.HasIndex(e => e.BusinessId).IsUnique();
             });
 
             modelBuilder.Entity<Template>(entity =>

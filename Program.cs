@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -17,11 +18,21 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = ProductImageStore.MaxUploadBytes;
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = ProductImageStore.MaxUploadBytes;
+});
+
 builder.Services.AddControllers().AddNewtonsoftJson(options =>
     options.SerializerSettings.Converters.Add(new JsonDocumentConverter()));
 builder.Services.AddScoped<PricingGovernance>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<ProposalExpiryService>();
+builder.Services.AddScoped<BrandStyleService>();
 builder.Services.AddSingleton<ProductImageStore>();
 builder.Services.AddSingleton<ProposalPdfService>();
 

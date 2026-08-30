@@ -258,6 +258,38 @@ namespace ProposalStudio.Data.Migrations
                     b.ToTable("brands", (string)null);
                 });
 
+            modelBuilder.Entity("ProposalStudio.Models.BrandKit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("business_id");
+
+                    b.Property<JsonDocument>("Colors")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("colors");
+
+                    b.Property<string>("LogoFile")
+                        .HasColumnType("text")
+                        .HasColumnName("logo_file");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BusinessId")
+                        .IsUnique();
+
+                    b.ToTable("brand_kits", (string)null);
+                });
+
             modelBuilder.Entity("ProposalStudio.Models.Business", b =>
                 {
                     b.Property<Guid>("Id")

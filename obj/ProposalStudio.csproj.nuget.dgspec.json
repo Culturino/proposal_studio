@@ -87,6 +87,10 @@
               "target": "Package",
               "version": "[2024.12.3, )"
             },
+            "SixLabors.ImageSharp": {
+              "target": "Package",
+              "version": "[3.1.11, )"
+            },
             "SkiaSharp": {
               "target": "Package",
               "version": "[2.88.9, )"

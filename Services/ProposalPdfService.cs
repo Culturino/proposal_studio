@@ -7,6 +7,7 @@ using QuestPDF.Drawing;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using SkiaSharp;
 
 namespace ProposalStudio.Services
 {
@@ -42,7 +43,9 @@ namespace ProposalStudio.Services
         string AddressLine,
         string? ProductImagePath,
         DateTimeOffset IssuedAt,
-        Guid? ProductId = null
+        Guid? ProductId = null,
+        int Qty = 1,
+        IReadOnlyList<ProposalAddonLine>? Addons = null
     );
 
     public class ProposalPdfService
@@ -116,8 +119,8 @@ namespace ProposalStudio.Services
                     "BOOKOSB.TTF", "BookmanOldStyle-Bold.ttf", "Bookman Old Style Bold.ttf",
                     "URWBookman-Demi.otf");
                 // Caladea is metric-compatible with Cambria and free to redistribute.
-                RegisterNamed(FontBody, dirs, "Caladea-Regular.ttf", "cambria.ttf");
-                RegisterNamed(FontBodyItalic, dirs, "Caladea-Italic.ttf", "cambriai.ttf");
+                RegisterNamed(FontBody, dirs, "cambria.ttf", "Caladea-Regular.ttf");
+                RegisterNamed(FontBodyItalic, dirs, "cambriai.ttf", "Caladea-Italic.ttf");
                 RegisterNamed(FontUi, dirs, "arial.ttf", "Arimo-Regular.ttf");
                 RegisterNamed(FontUiBold, dirs, "arialbd.ttf", "Arimo-Bold.ttf");
 
@@ -147,12 +150,58 @@ namespace ProposalStudio.Services
             }
         }
 
-        public byte[] Generate(ProposalPdfModel model)
+        /// <summary>
+        /// Dispatches to the layout registered for <paramref name="rendererKey"/>.
+        /// Unknown keys fall back to <see cref="ProposalRendererCatalog.PianoLuxury"/>.
+        /// </summary>
+        public byte[] GenerateFor(
+            string? rendererKey,
+            ProposalPdfModel model,
+            PdfPalette? palette = null,
+            string? logoFile = null)
         {
-            var vatHint = model.VatMode == "none" ? "Prices as quoted" : "VAT as applicable";
+            return ProposalRendererCatalog.Normalize(rendererKey) switch
+            {
+                ProposalRendererCatalog.PianoLuxury => Generate(model, palette, logoFile),
+                _ => Generate(model, palette, logoFile)
+            };
+        }
+
+        /// <summary>Piano — Luxury six-page deck. Invoked via <see cref="GenerateFor"/>.</summary>
+        public byte[] Generate(ProposalPdfModel model, PdfPalette? palette = null, string? logoFile = null)
+        {
+            var p = palette ?? PdfPalette.Defaults;
+            var Ink = p.Ink;
+            // Light pages stay white; kit "paper" is a cream that muddies photographs.
+            var Paper = "#FFFFFF";
+            var Cream = p.Cream;
+            var Gold = p.Gold;
+            var GoldLight = p.GoldLight;
+            var Charcoal = p.Charcoal;
+            var BodyInk = p.BodyInk;
+            var Muted = p.Muted;
+            var MutedDark = p.MutedDark;
+            var ExcludeInk = p.ExcludeInk;
+            var CardLine = p.CardLine;
+            var RowLine = p.RowLine;
+
+            var addons = model.Addons ?? Array.Empty<ProposalAddonLine>();
+            var qty = model.Qty < 1 ? 1 : model.Qty;
+            var vatHint = VatCaption(model);
 
             var finishLine = string.IsNullOrWhiteSpace(model.Finish) ? "—" : model.Finish!;
-            var modelFinishHeader = $"{model.Model} · {finishLine}".ToUpperInvariant();
+            var modelFinishHeader = qty > 1
+                ? $"{model.Model} · {finishLine} · Qty {qty}".ToUpperInvariant()
+                : $"{model.Model} · {finishLine}".ToUpperInvariant();
+            var issuedLine = $"{model.Reference}  ·  {FormatIssuedDate(model.IssuedAt)}";
+            var clientSize = FitSize(model.ClientName, 470f, 38.2f, 18f, EmDisplayBold);
+            var instrumentSize = FitSize($"{model.BrandName} — {model.Model}", 470f, 20.9f, 13f, EmDisplay);
+            var coverTag = string.IsNullOrWhiteSpace(model.Tagline) ? null : $"“{TrimQuotes(model.Tagline!)}”";
+            var coverTagSize = coverTag == null ? 13.7f : FitSize(coverTag, 470f, 13.7f, 10f, EmItalic);
+            var pageTagSize = string.IsNullOrWhiteSpace(model.Tagline)
+                ? 15.1f
+                : FitSize(model.Tagline!, 445f, 15.1f, 11f, EmItalic);
+            var includes = MergeIncludes(model.Included, addons);
             var contactCompact = $"{model.Phone}    ·    {model.Website}    ·    {model.Instagram}";
 
             var dimRows = model.Dimensions.Count > 0
@@ -170,11 +219,10 @@ namespace ProposalStudio.Services
                 ? model.Features
                 : new[] { $"Handcrafted by {model.BrandName}" };
 
-            var included = model.Included;
             var excluded = model.Excluded;
 
             var gallery = GalleryPaths(model);
-            var logo = BrandAsset("hop-logo.png");
+            var logo = BrandAsset(logoFile) ?? BrandAsset(BrandStyleService.DefaultLogoFile);
             var star = BrandAsset("bullet-star.png");
             var check = BrandAsset("bullet-check.png");
             var dash = BrandAsset("bullet-dash.png");
@@ -201,26 +249,32 @@ namespace ProposalStudio.Services
 
                         AtRight(l, 895.8f, 75.0f)
                             .Text($"{model.BrandName}  ·  Authorised Representative, United Arab Emirates")
-                            .Style(Serif(10.8f, MutedDark));
+                            .Style(Serif(FitSize(
+                                $"{model.BrandName}  ·  Authorised Representative, United Arab Emirates",
+                                420f, 10.8f, 8.5f, EmItalic), MutedDark));
 
-                        Hero(At(l, 571.0f, 158.4f).Width(356.4f).Height(351.5f), model, Ink);
+                        AtRight(l, 895.8f, 96.0f)
+                            .Text(issuedLine)
+                            .Style(Sans(9.4f, MutedDark));
+
+                        Hero(At(l, 571.0f, 148.0f).Width(356.4f).Height(330.0f), model, Ink, Gold, Cream, Charcoal, Paper);
 
                         AtCaps(l, MarginX, 221.8f, 12.3f).Text("PREPARED EXCLUSIVELY FOR")
                             .Style(Caps(12.3f, Gold));
 
                         At(l, MarginX, 245.7f, 470f).Text(model.ClientName)
-                            .Style(Display(38.2f, Cream, bold: true));
+                            .Style(Display(clientSize, Cream, bold: true));
 
                         At(l, 68.8f, 324.4f).Width(151.2f).LineHorizontal(1).LineColor(Gold);
 
                         AtCaps(l, MarginX, 346.4f, 10.8f).Text("THE INSTRUMENT").Style(Caps(10.8f, Gold));
 
                         At(l, MarginX, 360.4f, 470f).Text($"{model.BrandName} — {model.Model}")
-                            .Style(Display(20.9f, Cream));
+                            .Style(Display(instrumentSize, Cream));
 
-                        if (!string.IsNullOrWhiteSpace(model.Tagline))
-                            At(l, MarginX, 406.2f, 470f).Text($"“{TrimQuotes(model.Tagline!)}”")
-                                .Style(Italic(13.7f, GoldLight));
+                        if (coverTag != null)
+                            At(l, MarginX, 406.2f, 470f).Text(coverTag)
+                                .Style(Italic(coverTagSize, GoldLight));
 
                         At(l, MarginX, 502.9f).Text(contactCompact).Style(Contact(9.4f, MutedDark));
                     });
@@ -233,16 +287,16 @@ namespace ProposalStudio.Services
                     page.Content().Layers(l =>
                     {
                         Base(l);
-                        SectionHead(l, model.BrandName.ToUpperInvariant(), model.Model, 40.4f, Charcoal, titleY: 75.0f);
+                        SectionHead(l, model.BrandName.ToUpperInvariant(), model.Model, 40.4f, Charcoal, 75.0f, Gold);
 
                         if (!string.IsNullOrWhiteSpace(model.Tagline))
-                            At(l, MarginX, 148.2f, 445f).Text(model.Tagline!).Style(Italic(15.1f, Gold));
+                            At(l, MarginX, 148.2f, 445f).Text(model.Tagline!).Style(Italic(pageTagSize, Gold));
 
                         At(l, MarginX, 180.0f, 442f).Column(c =>
                         {
-                            foreach (var para in Paragraphs(model.Blurb))
-                                c.Item().PaddingBottom(34).Text(para)
-                                    .Style(Serif(13.7f, BodyInk)).LineHeight(1.42f);
+                            foreach (var para in Paragraphs(ClipCopy(model.Blurb, ProposalCopyLimits.BlurbMaxChars)))
+                                c.Item().PaddingBottom(14).Text(para)
+                                    .Style(Serif(13.7f, BodyInk)).LineHeight(1.38f);
                         });
 
                         At(l, MarginX, 360.1f, 440f).Row(r =>
@@ -250,17 +304,24 @@ namespace ProposalStudio.Services
                             var shown = features.Take(4).ToArray();
                             var half = (int)Math.Ceiling(shown.Length / 2.0);
                             r.ConstantItem(219.6f).Column(c => Bullets(
-                                c, shown.Take(half), star, 11.5f, 19.5f, 43.2f, 12.2f, Charcoal, 1.1f));
+                                c, shown.Take(half), star, 11.5f, 19.5f, 43.2f, 12.2f, Charcoal, 1.1f, Gold));
                             r.RelativeItem().Column(c => Bullets(
-                                c, shown.Skip(half), star, 11.5f, 19.5f, 43.2f, 12.2f, Charcoal, 1.1f));
+                                c, shown.Skip(half), star, 11.5f, 19.5f, 43.2f, 12.2f, Charcoal, 1.1f, Gold));
                         });
 
-                        Hero(At(l, 596.2f, 111.6f).Width(313.2f).Height(309.0f), model, Paper);
+                        Hero(At(l, 596.2f, 128.0f).Width(313.2f).Height(286.0f), model, Paper, Gold, Cream, Charcoal, Paper);
 
                         At(l, 596.2f, 428.8f, 313.2f).AlignCenter()
-                            .Text($"{model.Model}  ·  {finishLine}").Style(Italic(10.8f, Muted));
+                            .Text(qty > 1
+                                ? $"{model.Model}  ·  {finishLine}  ·  Qty {qty}"
+                                : $"{model.Model}  ·  {finishLine}")
+                            .Style(Italic(FitSize(
+                                qty > 1
+                                    ? $"{model.Model}  ·  {finishLine}  ·  Qty {qty}"
+                                    : $"{model.Model}  ·  {finishLine}",
+                                313f, 10.8f, 8.5f, EmItalic), Muted));
 
-                        Footer(l, "PRIVATE PROPOSAL", 2, Muted);
+                        Footer(l, "PRIVATE PROPOSAL", 2, Muted, Gold);
                     });
                 });
 
@@ -271,27 +332,28 @@ namespace ProposalStudio.Services
                     page.Content().Layers(l =>
                     {
                         Base(l);
-                        SectionHead(l, "GALLERY", "Views & Details", 33.9f, Charcoal, titleY: 75.9f);
+                        SectionHead(l, "GALLERY", "Views & Details", 33.9f, Charcoal, 75.9f, Gold);
 
                         At(l, MarginX, 143.2f, 830f)
                             .Text("A closer study of the finish, form, and detailing of the instrument reserved for you.")
                             .Style(Italic(13.0f, Muted));
 
-                        GalleryCard(At(l, 65.2f, 184.0f).Width(399.6f).Height(284.5f), gallery[0], model);
-                        GalleryCard(At(l, 486.4f, 184.0f).Width(403.2f).Height(133.2f), gallery[1], model);
-                        GalleryCard(At(l, 486.4f, 333.1f).Width(403.2f).Height(133.2f), gallery[2], model);
+                        GalleryCard(At(l, 65.2f, 184.0f).Width(399.6f).Height(284.5f), gallery[0], model, Gold);
+                        GalleryCard(At(l, 486.4f, 184.0f).Width(403.2f).Height(128.0f), gallery[1], model, Gold,
+                            fillWidth: 403.2f, fillHeight: 128.0f);
+                        GalleryCard(At(l, 486.4f, 338.0f).Width(403.2f).Height(128.0f), gallery[2], model, Gold,
+                            fillWidth: 403.2f, fillHeight: 128.0f);
 
                         At(l, 65.2f, 474.2f, 399.6f).AlignCenter()
                             .Text("01  ·  Full profile").Style(Caption(9.4f, Muted));
 
-                        At(l, 486.4f, 474.2f, 403.2f).AlignCenter().Row(r =>
-                        {
-                            r.AutoItem().Text("02  ·  Action & soundboard").Style(Caption(9.4f, Muted));
-                            r.ConstantItem(40);
-                            r.AutoItem().Text("03  ·  Keyboard & fallboard").Style(Caption(9.4f, Muted));
-                        });
+                        At(l, 486.4f, 314.5f, 403.2f).AlignCenter()
+                            .Text("02  ·  Action & soundboard").Style(Caption(9.4f, Muted));
 
-                        Footer(l, "PRIVATE PROPOSAL", 3, Muted);
+                        At(l, 486.4f, 474.2f, 403.2f).AlignCenter()
+                            .Text("03  ·  Keyboard & fallboard").Style(Caption(9.4f, Muted));
+
+                        Footer(l, "PRIVATE PROPOSAL", 3, Muted, Gold);
                     });
                 });
 
@@ -302,7 +364,7 @@ namespace ProposalStudio.Services
                     page.Content().Layers(l =>
                     {
                         Base(l);
-                        SectionHead(l, "SPECIFICATIONS", model.Model, 31.7f, Cream, titleY: 73.1f);
+                        SectionHead(l, "SPECIFICATIONS", model.Model, 31.7f, Cream, 73.1f, Gold);
 
                         At(l, MarginX, 138.9f, 445f).Text(CategoryLine(model, Dimension(dimRows, "length")))
                             .Style(Italic(13.0f, GoldLight));
@@ -325,12 +387,19 @@ namespace ProposalStudio.Services
                         AtCaps(l, 515.1f, 188.4f, 10.8f).Text("CRAFTSMANSHIP").Style(Caps(10.8f, Gold));
 
                         At(l, 514.8f, 224.7f, 380f).Column(c => Bullets(
-                            c, features.Take(7), star, 10.1f, 19.7f, 33.8f, 13.0f, Cream, -0.4f));
+                            c, features.Take(7), star, 10.1f, 19.7f, 33.8f, 13.0f, Cream, -0.4f, Gold));
 
                         AtCaps(l, MarginX, 451.6f, 10.8f).Text("AVAILABLE FINISHES").Style(Caps(10.8f, Gold));
-                        At(l, MarginX, 474.1f, 830f).Text(finishesLine).Style(Serif(12.2f, MutedDark));
+                        At(l, MarginX, 474.1f, 830f).Column(c =>
+                        {
+                            c.Item().Text(finishesLine).Style(Serif(
+                                FitSize(finishesLine, 830f, 12.2f, 9.4f, EmItalic), MutedDark));
+                            if (!string.IsNullOrWhiteSpace(model.AvailabilityNote))
+                                c.Item().PaddingTop(6).Text(model.AvailabilityNote)
+                                    .Style(Italic(10.8f, MutedDark));
+                        });
 
-                        Footer(l, "SPECIFICATIONS", 4, MutedDark);
+                        Footer(l, "SPECIFICATIONS", 4, MutedDark, Gold);
                     });
                 });
 
@@ -341,45 +410,72 @@ namespace ProposalStudio.Services
                     page.Content().Layers(l =>
                     {
                         Base(l);
-                        SectionHead(l, "THE INVESTMENT", "Your Investment", 33.9f, Charcoal, titleY: 76.1f);
+                        SectionHead(l, "THE INVESTMENT", "Your Investment", 33.9f, Charcoal, 76.1f, Gold);
+
+                        var addonPitch = 13.0f;
+                        var cardExtra = addons.Count * addonPitch;
+                        var cardH = 126.1f + cardExtra;
+                        var excludeShift = cardExtra;
 
                         // Drawn as SVG because QuestPDF 2024.12 has no corner radius on Background().
-                        At(l, MarginX, 151.2f).Width(385.2f).Height(126.1f).Svg(
-                            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 385 126'>" +
-                            $"<rect width='385' height='126' rx='5.4' fill='{Ink}'/></svg>");
+                        At(l, MarginX, 151.2f).Width(385.2f).Height(cardH).Svg(
+                            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 385 " +
+                            cardH.ToString("0.###", CultureInfo.InvariantCulture) + "'>" +
+                            $"<rect width='385' height='{cardH.ToString("0.###", CultureInfo.InvariantCulture)}' rx='5.4' fill='{Ink}'/></svg>");
 
-                        At(l, MarginX, 151.2f).Width(385.2f).Height(126.1f)
-                            .PaddingLeft(20.2f).PaddingTop(21.4f).Column(c =>
+                        At(l, MarginX, 151.2f).Width(385.2f).Height(cardH)
+                            .PaddingLeft(20.2f).PaddingRight(20.2f).PaddingTop(18.0f).Column(c =>
                             {
-                                c.Item().Text(modelFinishHeader).Style(Caps(9.4f, MutedDark));
+                                var headerSize = FitSize(modelFinishHeader, 344f, 9.4f, 7.2f, EmCaps);
+                                c.Item().Text(modelFinishHeader).Style(Caps(headerSize, MutedDark));
                                 c.Item().PaddingTop(2).Text(t =>
                                 {
-                                    if (model.PriceTotal.HasValue)
+                                    if (model.PriceTotal is > 0)
                                     {
-                                        t.Span($"{model.Currency} ").Style(Display(20.2f, GoldLight, bold: true));
-                                        t.Span(model.PriceTotal.Value.ToString("N0", CultureInfo.InvariantCulture))
-                                            .Style(Display(33.9f, GoldLight, bold: true));
+                                        var figure = ProposalQuote.FormatMoney(model.PriceTotal.Value);
+                                        var priceSize = FitSize(
+                                            $"{model.Currency} {figure}", 344f, 33.9f, 18f, EmDisplayBold);
+                                        t.Span($"{model.Currency} ").Style(Display(Math.Max(14f, priceSize * 0.6f), GoldLight, bold: true));
+                                        t.Span(figure)
+                                            .Style(Display(priceSize, GoldLight, bold: true));
                                     }
                                     else
                                     {
                                         t.Span("On request").Style(Display(26f, GoldLight, bold: true));
                                     }
                                 });
-                                c.Item().PaddingTop(12).Text($"Recommended retail  ·  [ {vatHint} ]")
-                                    .Style(Italic(10.8f, MutedDark));
+                                foreach (var addon in addons)
+                                {
+                                    var line = addon.Amount > 0
+                                        ? $"{addon.Name}  ·  {model.Currency} {ProposalQuote.FormatMoney(addon.Amount)}"
+                                        : addon.Name;
+                                    c.Item().PaddingTop(3).Text(line)
+                                        .Style(Sans(FitSize(line, 344f, 9.0f, 7.0f, 0.50f), MutedDark));
+                                }
+                                c.Item().PaddingTop(addons.Count > 0 ? 6 : 12)
+                                    .Text($"Recommended retail  ·  {vatHint}")
+                                    .Style(Italic(10.1f, MutedDark));
                             });
 
-                        AtCaps(l, MarginX, 305.9f, 10.8f).Text("NOT INCLUDED").Style(Caps(10.8f, Gold));
-                        At(l, 66.2f, 337.0f, 385f).Column(c => Bullets(
-                            c, excluded.Take(4), dash, 11.6f, 20.2f, 33.2f, 12.3f, ExcludeInk, 1.1f));
+                        var excludeHeadY = 305.9f + excludeShift;
+                        var excludeListY = 337.0f + excludeShift;
+                        var excludeAvail = Math.Max(36f, 464f - excludeListY);
+                        var excludePitch = ListPitch(excluded.Length, excludeAvail, 33.2f);
+                        var excludeFont = Math.Clamp(excludePitch * (12.3f / 33.2f), 8.5f, 12.3f);
 
+                        AtCaps(l, MarginX, excludeHeadY, 10.8f).Text("NOT INCLUDED").Style(Caps(10.8f, Gold));
+                        At(l, 66.2f, excludeListY, 385f).Column(c => Bullets(
+                            c, excluded, dash, 11.6f, 20.2f, excludePitch, excludeFont, ExcludeInk, 1.1f, Gold, 348f));
+
+                        var includePitch = ListPitch(includes.Length, 277f, 36.0f);
+                        var includeFont = Math.Clamp(includePitch * (13.0f / 36.0f), 8.5f, 13.0f);
                         AtCaps(l, 486.2f, 156.0f, 10.8f).Text("YOUR INVESTMENT INCLUDES").Style(Caps(10.8f, Gold));
                         At(l, 487.4f, 187.2f, 405f).Column(c => Bullets(
-                            c, included.Take(6), check, 14.4f, 25.5f, 36.0f, 13.0f, Charcoal, 2.5f));
+                            c, includes, check, 14.4f, 25.5f, includePitch, includeFont, Charcoal, 2.5f, Gold, 365f));
 
                         At(l, MarginX, 472.2f, 830f).Text(disclaimer).Style(Italic(10.8f, Muted));
 
-                        Footer(l, "THE INVESTMENT", 5, Muted);
+                        Footer(l, "THE INVESTMENT", 5, Muted, Gold);
                     });
                 });
 
@@ -417,12 +513,13 @@ namespace ProposalStudio.Services
                         AtCenter(l, 460.9f, 700f).AlignCenter().Text(t =>
                         {
                             t.Span("Prepared by  ").Style(Serif(13.0f, MutedDark));
-                            t.Span(model.AdvisorName).Style(Serif(13.0f, Cream));
+                            t.Span(model.AdvisorName).Style(Serif(
+                                FitSize($"Prepared by  {model.AdvisorName}", 700f, 13.0f, 10f, EmItalic), Cream));
                         });
 
                         AtCenter(l, 487.0f, 700f).AlignCenter()
                             .Text($"{model.AdvisorTitle ?? "Sales Advisor"}  ·  {model.BusinessName}")
-                            .Style(Sans(9.4f, "#8A8479").LetterSpacing(0.12f));
+                            .Style(Sans(9.4f, Muted).LetterSpacing(0.12f));
                     });
                 });
             }).GeneratePdf();
@@ -480,65 +577,253 @@ namespace ProposalStudio.Services
         /// because the display font's line box is taller than its glyphs.
         /// </summary>
         private static void SectionHead(LayersDescriptor layers, string eyebrow, string title,
-            float titleSize, string titleColor, float titleY)
+            float titleSize, string titleColor, float titleY, string gold)
         {
-            AtCaps(layers, MarginX, 56.0f, 12.3f).Text(eyebrow).Style(Caps(12.3f, Gold));
-            At(layers, MarginX, titleY, 620f).Text(title).Style(Display(titleSize, titleColor, bold: true));
+            var size = FitSize(title, 620f, titleSize, titleSize * 0.62f, EmDisplayBold);
+            AtCaps(layers, MarginX, 56.0f, 12.3f).Text(eyebrow).Style(Caps(12.3f, gold));
+            At(layers, MarginX, titleY, 620f).Text(title).Style(Display(size, titleColor, bold: true));
         }
 
-        private static void Footer(LayersDescriptor layers, string section, int page, string sectionColor)
+        private static void Footer(LayersDescriptor layers, string section, int page, string sectionColor, string gold)
         {
-            AtCaps(layers, MarginX, FooterY, 7.9f).Text("HOUSE OF PIANOS").Style(Caps(7.9f, Gold));
+            AtCaps(layers, MarginX, FooterY, 7.9f).Text("HOUSE OF PIANOS").Style(Caps(7.9f, gold));
             AtRight(layers, PageW - MarginX, FooterY)
                 .Text($"{section}  ·  {page:00}")
                 .Style(Sans(7.9f, sectionColor).LetterSpacing(Track));
         }
 
         private static void Bullets(ColumnDescriptor col, IEnumerable<string> items, string? icon,
-            float iconSize, float textOffset, float pitch, float fontSize, string color, float textNudge)
+            float iconSize, float textOffset, float pitch, float fontSize, string color, float textNudge, string gold,
+            float textWidth = 360f)
         {
             foreach (var item in items)
             {
+                var size = FitSize(item, textWidth, fontSize, Math.Max(8f, fontSize * 0.72f), EmItalic);
                 col.Item().Height(pitch).Row(r =>
                 {
                     r.ConstantItem(textOffset).Element(e =>
                     {
                         if (icon != null) e.Width(iconSize).Image(icon);
-                        else e.PaddingTop(fontSize * 0.4f).Width(4).Height(4).Background(Gold);
+                        else e.PaddingTop(fontSize * 0.4f).Width(4).Height(4).Background(gold);
                     });
-                    r.RelativeItem().PaddingTop(textNudge).Text(item).Style(Serif(fontSize, color));
+                    r.RelativeItem().PaddingTop(textNudge).Text(item).Style(Serif(size, color));
                 });
             }
         }
 
-        /// <summary>Product cut-out, unframed, exactly as the template presents it.</summary>
-        private static void Hero(IContainer container, ProposalPdfModel model, string background)
+        private static float ListPitch(int count, float availableHeight, float preferred)
+        {
+            if (count <= 0) return preferred;
+            var needed = preferred * count;
+            if (needed <= availableHeight) return preferred;
+            return Math.Max(14f, availableHeight / count);
+        }
+
+        /// <summary>Product cut-out, unframed, subject centered in the frame above its title.</summary>
+        private static void Hero(IContainer container, ProposalPdfModel model, string background,
+            string gold, string cream, string charcoal, string paper)
         {
             if (!string.IsNullOrWhiteSpace(model.ProductImagePath) && File.Exists(model.ProductImagePath))
             {
-                container.Image(model.ProductImagePath!).FitArea();
+                var trimmed = TrimTransparent(model.ProductImagePath!);
+                container.AlignCenter().AlignMiddle().Element(inner =>
+                {
+                    if (trimmed != null)
+                        inner.Image(trimmed).FitArea();
+                    else
+                        inner.Image(model.ProductImagePath!).FitArea();
+                });
                 return;
             }
 
-            var onDark = background == Ink;
+            var onDark = !string.Equals(background, paper, StringComparison.OrdinalIgnoreCase);
             container.AlignCenter().AlignMiddle().Column(inner =>
             {
-                inner.Item().AlignCenter().Text(model.BrandName).Style(Caps(10f, Gold));
+                inner.Item().AlignCenter().Text(model.BrandName).Style(Caps(10f, gold));
                 inner.Item().PaddingTop(8).AlignCenter().Text(model.Model)
-                    .Style(Display(18f, onDark ? Cream : Charcoal));
+                    .Style(Display(18f, onDark ? cream : charcoal));
             });
         }
 
-        private static void GalleryCard(IContainer container, string? imagePath, ProposalPdfModel model)
+        /// <summary>
+        /// Studio plate: true white behind the photo so cut-outs and JPEGs both read as
+        /// a photograph, not as a cream card or a black-alpha hole.
+        /// </summary>
+        private static void GalleryCard(IContainer container, string? imagePath, ProposalPdfModel model,
+            string cardLine, float fillWidth = 0, float fillHeight = 0)
         {
-            container.Background(Paper).Border(1).BorderColor(CardLine).Padding(5.4f)
-                .AlignCenter().AlignMiddle().Element(inner =>
+            const string White = "#FFFFFF";
+            var fill = fillWidth > 0 && fillHeight > 0;
+            var pad = fill ? 2.2f : 5.4f;
+            var frame = container.Background(White).Border(0.6f).BorderColor(cardLine)
+                .Padding(pad).Background(White);
+
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                frame.AlignCenter().AlignMiddle().Text(model.Model).Style(Display(14f, cardLine));
+                return;
+            }
+
+            var bytes = fill
+                ? CoverToBox(imagePath, fillWidth - pad * 2, fillHeight - pad * 2)
+                : FlattenOnWhite(imagePath);
+
+            if (bytes == null)
+            {
+                frame.AlignCenter().AlignMiddle().Image(imagePath).FitArea();
+                return;
+            }
+
+            if (fill)
+            {
+                frame.Image(bytes).FitArea();
+                return;
+            }
+
+            frame.AlignCenter().AlignMiddle().Image(bytes).FitArea();
+        }
+
+        /// <summary>
+        /// Scale the photo up until it covers the plate, then center-crop. Same idea as
+        /// CSS object-fit: cover — the box is full, the picture is not squashed.
+        /// </summary>
+        private static byte[]? CoverToBox(string path, float boxW, float boxH)
+        {
+            try
+            {
+                using var source = SKBitmap.Decode(path);
+                if (source == null || source.Width < 1 || source.Height < 1 || boxW <= 0 || boxH <= 0)
+                    return null;
+
+                var target = boxW / boxH;
+                var sourceAspect = source.Width / (float)source.Height;
+                int cropW, cropH, cropX, cropY;
+                if (sourceAspect > target)
                 {
-                    if (!string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath))
-                        inner.Image(imagePath!).FitArea();
-                    else
-                        inner.Text(model.Model).Style(Display(14f, CardLine));
-                });
+                    cropH = source.Height;
+                    cropW = Math.Max(1, (int)Math.Round(cropH * target));
+                    cropX = Math.Max(0, (source.Width - cropW) / 2);
+                    cropY = 0;
+                }
+                else
+                {
+                    cropW = source.Width;
+                    cropH = Math.Max(1, (int)Math.Round(cropW / target));
+                    cropX = 0;
+                    cropY = Math.Max(0, (source.Height - cropH) / 2);
+                }
+
+                cropW = Math.Min(cropW, source.Width - cropX);
+                cropH = Math.Min(cropH, source.Height - cropY);
+
+                var info = new SKImageInfo(cropW, cropH, SKColorType.Bgra8888, SKAlphaType.Premul);
+                using var plate = new SKBitmap(info);
+                plate.Erase(SKColors.White);
+                using (var canvas = new SKCanvas(plate))
+                {
+                    canvas.DrawBitmap(
+                        source,
+                        new SKRect(cropX, cropY, cropX + cropW, cropY + cropH),
+                        new SKRect(0, 0, cropW, cropH));
+                }
+
+                using var image = SKImage.FromBitmap(plate);
+                using var encoded = image.Encode(SKEncodedImageFormat.Png, 90);
+                return encoded.ToArray();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static byte[]? FlattenOnWhite(string path)
+        {
+            try
+            {
+                using var source = SKBitmap.Decode(path);
+                if (source == null) return null;
+
+                var info = new SKImageInfo(source.Width, source.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                using var plate = new SKBitmap(info);
+                plate.Erase(SKColors.White);
+                using (var canvas = new SKCanvas(plate))
+                    canvas.DrawBitmap(source, 0, 0);
+
+                using var image = SKImage.FromBitmap(plate);
+                using var encoded = image.Encode(SKEncodedImageFormat.Png, 90);
+                return encoded.ToArray();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Crops empty transparent padding so the instrument sits in the middle of the hero
+        /// frame, level with the title beneath it.
+        /// </summary>
+        private static byte[]? TrimTransparent(string path)
+        {
+            try
+            {
+                using var source = SKBitmap.Decode(path);
+                if (source == null) return null;
+
+                if (!TryOpaqueBounds(source, out var bounds))
+                    return null;
+
+                var padX = Math.Max(4, bounds.Width / 40);
+                var padY = Math.Max(4, bounds.Height / 40);
+                var left = Math.Max(0, bounds.Left - padX);
+                var top = Math.Max(0, bounds.Top - padY);
+                var right = Math.Min(source.Width, bounds.Right + padX);
+                var bottom = Math.Min(source.Height, bounds.Bottom + padY);
+                var crop = new SKRectI(left, top, right, bottom);
+
+                using var trimmed = new SKBitmap(crop.Width, crop.Height, source.ColorType, source.AlphaType);
+                if (!source.ExtractSubset(trimmed, crop))
+                    return null;
+
+                using var image = SKImage.FromBitmap(trimmed);
+                using var encoded = image.Encode(SKEncodedImageFormat.Png, 90);
+                return encoded.ToArray();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool TryOpaqueBounds(SKBitmap bitmap, out SKRectI bounds)
+        {
+            var minX = bitmap.Width;
+            var minY = bitmap.Height;
+            var maxX = 0;
+            var maxY = 0;
+            var step = Math.Max(1, Math.Max(bitmap.Width, bitmap.Height) / 400);
+
+            for (var y = 0; y < bitmap.Height; y += step)
+            {
+                for (var x = 0; x < bitmap.Width; x += step)
+                {
+                    if (bitmap.GetPixel(x, y).Alpha < 16) continue;
+                    if (x < minX) minX = x;
+                    if (y < minY) minY = y;
+                    if (x > maxX) maxX = x;
+                    if (y > maxY) maxY = y;
+                }
+            }
+
+            if (maxX < minX || maxY < minY)
+            {
+                bounds = default;
+                return false;
+            }
+
+            bounds = new SKRectI(minX, minY, maxX + 1, maxY + 1);
+            return true;
         }
 
         /// <summary>
@@ -565,14 +850,97 @@ namespace ProposalStudio.Services
             return new string?[] { primary, primary, primary };
         }
 
-        private static string? BrandAsset(string fileName)
+        private static string? BrandAsset(string? fileName)
         {
+            var safe = Path.GetFileName(fileName ?? "");
+            if (string.IsNullOrWhiteSpace(safe)) return null;
+
             foreach (var root in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
             {
-                var path = Path.Combine(root, "wwwroot", "brand", fileName);
+                var path = Path.Combine(root, "wwwroot", "brand", safe);
                 if (File.Exists(path)) return path;
             }
             return null;
+        }
+
+        private const float EmDisplay = 0.52f;
+        private const float EmDisplayBold = 0.58f;
+        private const float EmItalic = 0.48f;
+        private const float EmCaps = 0.62f + Track;
+
+        /// <summary>
+        /// Shrink a single line so it stays on one line. QuestPDF has no auto-fit,
+        /// so this estimates width from average em and clamps between min and max.
+        /// </summary>
+        private static float FitSize(string text, float maxWidth, float maxSize, float minSize, float avgEm)
+        {
+            if (string.IsNullOrEmpty(text) || maxWidth <= 0) return maxSize;
+            var needed = text.Length * avgEm * maxSize;
+            if (needed <= maxWidth) return maxSize;
+            return Math.Clamp(maxWidth / (text.Length * avgEm), minSize, maxSize);
+        }
+
+        private static string? ClipCopy(string? text, int maxChars)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= maxChars) return text;
+            var cut = text.LastIndexOf(' ', maxChars);
+            if (cut < maxChars / 2) cut = maxChars;
+            return text[..cut].TrimEnd() + "…";
+        }
+
+        private static string FormatIssuedDate(DateTimeOffset issued)
+        {
+            TimeZoneInfo tz;
+            try
+            {
+                tz = TimeZoneInfo.FindSystemTimeZoneById("Arabian Standard Time");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                try { tz = TimeZoneInfo.FindSystemTimeZoneById("Asia/Dubai"); }
+                catch (TimeZoneNotFoundException) { tz = TimeZoneInfo.Utc; }
+            }
+
+            var local = TimeZoneInfo.ConvertTime(issued, tz);
+            return local.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("en-GB"));
+        }
+
+        private static DateTimeOffset ResolveIssuedAt(Proposal proposal) =>
+            proposal.UpdatedAt > proposal.CreatedAt.AddMinutes(2)
+                ? proposal.UpdatedAt
+                : proposal.CreatedAt;
+
+        private static string VatCaption(ProposalPdfModel model)
+        {
+            if (string.Equals(model.VatMode, "none", StringComparison.OrdinalIgnoreCase))
+                return "Prices as quoted";
+
+            if (string.Equals(model.VatMode, "itemised", StringComparison.OrdinalIgnoreCase)
+                && model.PriceTotal is > 0)
+            {
+                var vat = ProposalQuote.VatAmount(model.PriceTotal.Value);
+                var inc = model.PriceTotal.Value + vat;
+                return $"VAT 5% {model.Currency} {ProposalQuote.FormatMoney(vat)}  ·  Inc. VAT {model.Currency} {ProposalQuote.FormatMoney(inc)}";
+            }
+
+            return "VAT as applicable";
+        }
+
+        private static string[] MergeIncludes(string[] included, IReadOnlyList<ProposalAddonLine> addons)
+        {
+            var list = new List<string>();
+            foreach (var addon in addons)
+            {
+                if (!list.Any(x => string.Equals(x, addon.Name, StringComparison.OrdinalIgnoreCase)))
+                    list.Add(addon.Name);
+            }
+            foreach (var item in included)
+            {
+                if (string.IsNullOrWhiteSpace(item)) continue;
+                if (!list.Any(x => string.Equals(x, item, StringComparison.OrdinalIgnoreCase)))
+                    list.Add(item);
+            }
+            return list.ToArray();
         }
 
         private static IEnumerable<string> Paragraphs(string? blurb)
@@ -665,6 +1033,8 @@ namespace ProposalStudio.Services
             public string? ProductImagePath { get; set; }
             public DateTimeOffset IssuedAt { get; set; }
             public Guid? ProductId { get; set; }
+            public int Qty { get; set; } = 1;
+            public List<ProposalAddonLine>? Addons { get; set; }
         }
 
         public static JsonDocument BuildSnapshot(ProposalPdfModel model)
@@ -713,7 +1083,9 @@ namespace ProposalStudio.Services
                     AddressLine: p.AddressLine,
                     ProductImagePath: p.ProductImagePath,
                     IssuedAt: p.IssuedAt == default ? DateTimeOffset.UtcNow : p.IssuedAt,
-                    ProductId: p.ProductId
+                    ProductId: p.ProductId,
+                    Qty: p.Qty < 1 ? 1 : p.Qty,
+                    Addons: p.Addons
                 );
             }
             catch
@@ -786,7 +1158,12 @@ namespace ProposalStudio.Services
             }
 
             model = WithResolvedImage(model);
-            var bytes = Generate(model);
+            var template = await db.Templates.FirstOrDefaultAsync(t => t.Id == proposal.TemplateId);
+            var palette = PdfPalette.FromSchema(template?.PageSchema);
+            var logoFile = BrandStyleService.LogoFromSchema(template?.PageSchema);
+            var rendererKey =
+                BrandStyleService.RendererFromSchema(template?.PageSchema) ?? template?.Key;
+            var bytes = GenerateFor(rendererKey, model, palette, logoFile);
             var fileName =
                 $"{proposal.Reference}_{SanitizeFilePart(model.ClientName)}_{SanitizeFilePart(model.Model)}.pdf";
             return (bytes, fileName);
@@ -815,7 +1192,8 @@ namespace ProposalStudio.Services
             var advisor = await db.Users.FirstOrDefaultAsync(u => u.Id == proposal.AdvisorId);
             var business = await db.Businesses.FirstOrDefaultAsync(b => b.Id == proposal.BusinessId);
 
-            var finalPrice = (item.PriceOverride ?? item.UnitPrice ?? 0) * item.Qty;
+            var addons = ProposalQuote.ParseAddons(item.Addons);
+            var finalPrice = ProposalQuote.Total(item.PriceOverride ?? item.UnitPrice, item.Qty, item.Addons);
 
             var dimensions = ReadDimensions(product.Dimensions);
 
@@ -842,11 +1220,11 @@ namespace ProposalStudio.Services
                 BrandName: brand?.Name ?? "Steinway & Sons",
                 BrandBlurb: brand?.Blurb,
                 Model: product.Model,
-                Tagline: product.Tagline,
-                Blurb: product.Blurb,
+                Tagline: ClipCopy(product.Tagline, ProposalCopyLimits.TaglineMaxChars),
+                Blurb: ClipCopy(product.Blurb, ProposalCopyLimits.BlurbMaxChars),
                 Finish: item.Finish,
                 Currency: proposal.Currency,
-                PriceTotal: finalPrice > 0 ? finalPrice : proposal.PriceTotal,
+                PriceTotal: finalPrice ?? proposal.PriceTotal,
                 ValidityDays: proposal.ValidityDays,
                 VatMode: proposal.VatMode,
                 Features: product.Features ?? Array.Empty<string>(),
@@ -864,8 +1242,10 @@ namespace ProposalStudio.Services
                 ProductImagePath: !string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath)
                     ? imagePath
                     : null,
-                IssuedAt: proposal.SentAt ?? proposal.UpdatedAt,
-                ProductId: product.Id
+                IssuedAt: ResolveIssuedAt(proposal),
+                ProductId: product.Id,
+                Qty: item.Qty < 1 ? 1 : item.Qty,
+                Addons: addons
             );
 
             return (proposal, model);

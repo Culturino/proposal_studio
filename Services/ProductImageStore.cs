@@ -1,4 +1,8 @@
 using System.Text.RegularExpressions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using SkiaSharp;
 
 namespace ProposalStudio.Services
@@ -22,8 +26,11 @@ namespace ProposalStudio.Services
         /// <summary>Longest edge of a generated thumbnail, in pixels.</summary>
         private const int ThumbnailSize = 400;
 
-        /// <summary>Largest upload accepted, before decoding.</summary>
-        public const long MaxUploadBytes = 25 * 1024 * 1024;
+        /// <summary>Longest edge stored for print. Gallery PDFs are 960 pt; 4k is plenty.</summary>
+        private const int MaxStoredEdge = 4096;
+
+        /// <summary>Largest upload accepted, before decoding. Print TIFFs run larger than JPEGs.</summary>
+        public const long MaxUploadBytes = 100 * 1024 * 1024;
 
         private static readonly int[] ValidSlots = { 1, 2, 3 };
 
@@ -86,29 +93,56 @@ namespace ProposalStudio.Services
         /// </summary>
         public async Task<ImageSaveResult> SaveAsync(Guid productId, int slot, Stream upload)
         {
-            using var buffer = new MemoryStream();
-            await upload.CopyToAsync(buffer);
-            buffer.Position = 0;
-
-            using var bitmap = SKBitmap.Decode(buffer);
-            if (bitmap == null)
-                return ImageSaveResult.Rejected("That file could not be read as an image.");
-
-            Directory.CreateDirectory(_root);
-            Directory.CreateDirectory(Path.Combine(_root, "thumbs"));
-
-            var dest = FullPath(productId, slot);
-            using (var image = SKImage.FromBitmap(bitmap))
-            using (var encoded = image.Encode(SKEncodedImageFormat.Png, 100))
-            await using (var file = File.Create(dest))
+            try
             {
-                encoded.SaveTo(file);
+                using var buffer = new MemoryStream();
+                await upload.CopyToAsync(buffer);
+                buffer.Position = 0;
+
+                Directory.CreateDirectory(_root);
+                Directory.CreateDirectory(Path.Combine(_root, "thumbs"));
+
+                var dest = FullPath(productId, slot);
+                var thumb = ThumbnailPath(productId, slot);
+
+                // TIFF (and anything Skia cannot read) is converted here and written
+                // straight to PNG. Going through Skia doubled memory and killed the
+                // request on typical print files — the browser then reports Failed to fetch.
+                if (LooksLikeTiff(buffer))
+                {
+                    var converted = SaveWithImageSharp(buffer, dest, thumb);
+                    if (converted.Success)
+                        DeleteLegacy(productId, slot);
+                    return converted;
+                }
+
+                using var bitmap = DecodeWithSkia(buffer);
+                if (bitmap == null)
+                {
+                    var converted = SaveWithImageSharp(buffer, dest, thumb);
+                    if (converted.Success)
+                        DeleteLegacy(productId, slot);
+                    return converted;
+                }
+
+                using (var image = SKImage.FromBitmap(bitmap))
+                using (var encoded = image.Encode(SKEncodedImageFormat.Png, 100))
+                await using (var file = File.Create(dest))
+                {
+                    encoded.SaveTo(file);
+                }
+
+                WriteThumbnail(bitmap, thumb);
+                DeleteLegacy(productId, slot);
+
+                return ImageSaveResult.Saved(bitmap.Width, bitmap.Height, HasTransparency(bitmap));
             }
-
-            WriteThumbnail(bitmap, ThumbnailPath(productId, slot));
-            DeleteLegacy(productId, slot);
-
-            return ImageSaveResult.Saved(bitmap.Width, bitmap.Height, HasTransparency(bitmap));
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not save product image {ProductId} slot {Slot}", productId, slot);
+                return ImageSaveResult.Rejected(
+                    "That image could not be converted. Try a PNG or JPEG, or a TIFF under 100 MB.");
+            }
         }
 
         public void Delete(Guid productId, int slot)
@@ -281,6 +315,144 @@ namespace ProposalStudio.Services
             using var encoded = image.Encode(SKEncodedImageFormat.Png, 90);
             using var file = File.Create(destination);
             encoded.SaveTo(file);
+        }
+
+        private static SKBitmap? DecodeWithSkia(MemoryStream buffer)
+        {
+            try
+            {
+                buffer.Position = 0;
+                return SKBitmap.Decode(buffer);
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static bool LooksLikeTiff(MemoryStream buffer)
+        {
+            if (buffer.Length < 4) return false;
+            buffer.Position = 0;
+            var a = buffer.ReadByte();
+            var b = buffer.ReadByte();
+            var c = buffer.ReadByte();
+            var d = buffer.ReadByte();
+            // II*\0  or  MM\0*  or BigTIFF II+\0
+            return (a == 'I' && b == 'I' && (c == 0x2A || c == 0x2B) && d == 0)
+                || (a == 'M' && b == 'M' && c == 0 && (d == 0x2A || d == 0x2B));
+        }
+
+        /// <summary>
+        /// TIFF / fallback: decode, cap the long edge, write PNG + thumb. No Skia round-trip.
+        /// </summary>
+        private ImageSaveResult SaveWithImageSharp(MemoryStream buffer, string dest, string thumb)
+        {
+            try
+            {
+                buffer.Position = 0;
+                using var image = Image.Load<Rgba32>(buffer);
+
+                // CMYK TIFFs keep a print ICC after decode. Left on an RGB PNG, browsers
+                // and the PDF treat paper-white as grey. Strip it and lift the backdrop.
+                image.Metadata.IccProfile = null;
+                image.Metadata.GetPngMetadata().Gamma = 0;
+                RestorePaperWhite(image);
+
+                if (Math.Max(image.Width, image.Height) > MaxStoredEdge)
+                {
+                    image.Mutate(c => c.Resize(new ResizeOptions
+                    {
+                        Mode = ResizeMode.Max,
+                        Size = new Size(MaxStoredEdge, MaxStoredEdge)
+                    }));
+                }
+
+                var width = image.Width;
+                var height = image.Height;
+                var png = new PngEncoder { CompressionLevel = PngCompressionLevel.BestSpeed };
+
+                image.Save(dest, png);
+
+                image.Mutate(c => c.Resize(new ResizeOptions
+                {
+                    Mode = ResizeMode.Max,
+                    Size = new Size(ThumbnailSize, ThumbnailSize)
+                }));
+                image.Save(thumb, png);
+
+                return ImageSaveResult.Saved(width, height, false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ImageSharp could not convert an upload");
+                return ImageSaveResult.Rejected(
+                    "That TIFF could not be converted. Export a JPEG or an 8-bit TIFF and try again.");
+            }
+        }
+
+        /// <summary>
+        /// Print CMYK → RGB maps coated-paper white to ~220 grey. If the corners look like
+        /// a studio backdrop, scale the highlights so that backdrop becomes white.
+        /// </summary>
+        private static void RestorePaperWhite(Image<Rgba32> image)
+        {
+            var patch = Math.Clamp(Math.Min(image.Width, image.Height) / 30, 8, 48);
+            long r = 0, g = 0, b = 0, n = 0;
+
+            void Sample(int x0, int y0)
+            {
+                var x1 = Math.Min(image.Width, x0 + patch);
+                var y1 = Math.Min(image.Height, y0 + patch);
+                for (var y = y0; y < y1; y++)
+                {
+                    for (var x = x0; x < x1; x++)
+                    {
+                        var p = image[x, y];
+                        r += p.R;
+                        g += p.G;
+                        b += p.B;
+                        n++;
+                    }
+                }
+            }
+
+            Sample(0, 0);
+            Sample(image.Width - patch, 0);
+            Sample(0, image.Height - patch);
+            Sample(image.Width - patch, image.Height - patch);
+
+            if (n == 0) return;
+
+            var avgR = r / (float)n;
+            var avgG = g / (float)n;
+            var avgB = b / (float)n;
+            var brightest = Math.Max(avgR, Math.Max(avgG, avgB));
+            var chroma = brightest - Math.Min(avgR, Math.Min(avgG, avgB));
+
+            // Only lift a near-neutral, already-light backdrop — not a dark or colored scene.
+            if (brightest < 198 || brightest >= 254 || chroma > 30)
+                return;
+
+            var gainR = Math.Clamp(255f / Math.Max(avgR, 1f), 1f, 1.22f);
+            var gainG = Math.Clamp(255f / Math.Max(avgG, 1f), 1f, 1.22f);
+            var gainB = Math.Clamp(255f / Math.Max(avgB, 1f), 1f, 1.22f);
+
+            image.ProcessPixelRows(accessor =>
+            {
+                for (var y = 0; y < accessor.Height; y++)
+                {
+                    var row = accessor.GetRowSpan(y);
+                    for (var x = 0; x < row.Length; x++)
+                    {
+                        var p = row[x];
+                        p.R = (byte)Math.Min(255, p.R * gainR + 0.5f);
+                        p.G = (byte)Math.Min(255, p.G * gainG + 0.5f);
+                        p.B = (byte)Math.Min(255, p.B * gainB + 0.5f);
+                        row[x] = p;
+                    }
+                }
+            });
         }
 
         /// <summary>

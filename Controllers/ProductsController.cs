@@ -209,7 +209,10 @@ namespace ProposalStudio.Controllers
         // POST: api/products/{id}/image?slot=1 (Admin)
         [HttpPost("{id}/image")]
         [Authorize(Roles = "Admin")]
-        [RequestSizeLimit(ProductImageStore.MaxUploadBytes)]
+        [DisableRequestSizeLimit]
+        [RequestFormLimits(
+            MultipartBodyLengthLimit = ProductImageStore.MaxUploadBytes,
+            ValueLengthLimit = int.MaxValue)]
         public async Task<IActionResult> UploadProductImage(
             Guid id, IFormFile file, [FromQuery] int slot = 1)
         {
@@ -225,7 +228,7 @@ namespace ProposalStudio.Controllers
 
             if (file.Length > ProductImageStore.MaxUploadBytes)
             {
-                return BadRequest("Image must be 25 MB or smaller.");
+                return BadRequest("Image must be 100 MB or smaller.");
             }
 
             if (!await _context.Products.AnyAsync(p => p.Id == id))
@@ -233,8 +236,16 @@ namespace ProposalStudio.Controllers
                 return NotFound("Product not found");
             }
 
-            await using var stream = file.OpenReadStream();
-            var result = await _images.SaveAsync(id, slot, stream);
+            ImageSaveResult result;
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                result = await _images.SaveAsync(id, slot, stream);
+            }
+            catch (Exception)
+            {
+                return BadRequest("That image could not be converted. Try a PNG or JPEG, or a TIFF under 80 MB.");
+            }
 
             if (!result.Success)
             {
@@ -323,8 +334,8 @@ namespace ProposalStudio.Controllers
                 Model = model,
                 Dimensions = ParseDimensions(request.Dimensions),
                 Features = request.Features ?? Array.Empty<string>(),
-                Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
-                Tagline = string.IsNullOrWhiteSpace(request.Tagline) ? null : request.Tagline.Trim(),
+                Blurb = LimitCopy(request.Blurb, ProposalCopyLimits.BlurbMaxChars),
+                Tagline = LimitCopy(request.Tagline, ProposalCopyLimits.TaglineMaxChars),
                 Finishes = request.Finishes ?? Array.Empty<string>(),
                 DefaultIncludes = request.DefaultIncludes ?? Array.Empty<string>(),
                 DefaultExcludes = request.DefaultExcludes ?? Array.Empty<string>(),
@@ -407,12 +418,12 @@ namespace ProposalStudio.Controllers
 
             if (request.Blurb != null)
             {
-                product.Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim();
+                product.Blurb = LimitCopy(request.Blurb, ProposalCopyLimits.BlurbMaxChars);
             }
 
             if (request.Tagline != null)
             {
-                product.Tagline = string.IsNullOrWhiteSpace(request.Tagline) ? null : request.Tagline.Trim();
+                product.Tagline = LimitCopy(request.Tagline, ProposalCopyLimits.TaglineMaxChars);
             }
 
             if (request.Finishes != null)
@@ -547,6 +558,16 @@ namespace ProposalStudio.Controllers
 
                 return JsonDocument.Parse(JsonSerializer.Serialize(clean));
             }
+        }
+
+        private static string? LimitCopy(string? value, int maxChars)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return null;
+            var trimmed = value.Trim();
+            if (trimmed.Length <= maxChars) return trimmed;
+            var cut = trimmed.LastIndexOf(' ', maxChars);
+            if (cut < maxChars / 2) cut = maxChars;
+            return trimmed[..cut].TrimEnd();
         }
     }
 

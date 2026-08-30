@@ -18,17 +18,20 @@ namespace ProposalStudio.Controllers
         private readonly PricingGovernance _pricing;
         private readonly ProposalPdfService _pdf;
         private readonly ProposalExpiryService _expiry;
+        private readonly AuditService _audit;
 
         public ProposalsController(
             AppDbContext context,
             PricingGovernance pricing,
             ProposalPdfService pdf,
-            ProposalExpiryService expiry)
+            ProposalExpiryService expiry,
+            AuditService audit)
         {
             _context = context;
             _pricing = pricing;
             _pdf = pdf;
             _expiry = expiry;
+            _audit = audit;
         }
 
         // GET: api/proposals?status=&advisor=&q=
@@ -194,10 +197,13 @@ namespace ProposalStudio.Controllers
                     t.Active);
             }
 
-            template ??= await _context.Templates.FirstOrDefaultAsync(t =>
-                t.BusinessId == business.Id &&
-                t.Key == "piano_luxury" &&
-                t.Active);
+            template ??= await _context.Templates
+                .Where(t =>
+                    t.BusinessId == business.Id &&
+                    t.Key == ProposalRendererCatalog.PianoLuxury &&
+                    t.Active)
+                .OrderByDescending(t => t.Version)
+                .FirstOrDefaultAsync();
 
             if (template == null)
             {
@@ -361,7 +367,10 @@ namespace ProposalStudio.Controllers
             }
 
             var finalUnitPrice = existingItem.PriceOverride ?? existingItem.UnitPrice ?? 0;
-            proposal.PriceTotal = finalUnitPrice * existingItem.Qty;
+            proposal.PriceTotal = ProposalQuote.Total(
+                existingItem.PriceOverride ?? existingItem.UnitPrice,
+                existingItem.Qty,
+                existingItem.Addons);
             proposal.UpdatedAt = now;
 
             await _context.SaveChangesAsync();
@@ -886,6 +895,81 @@ namespace ProposalStudio.Controllers
             });
         }
 
+        [HttpPatch("{id}/status")]
+        public async Task<IActionResult> SetStatus(Guid id, [FromBody] SetProposalStatusRequest request)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var next = ProposalStatuses.Normalize(request?.Status);
+            if (next == null)
+            {
+                return BadRequest(new { message = "Unknown status. Use draft, sent, viewed, accepted, or expired." });
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            var role = User.FindFirstValue(ClaimTypes.Role);
+            var staff = role is "Admin" or "Manager";
+
+            if (!staff)
+            {
+                if (next != ProposalStatuses.Accepted)
+                {
+                    return StatusCode(StatusCodes.Status403Forbidden, new
+                    {
+                        message = "Only managers and admins can change a proposal to that status."
+                    });
+                }
+
+                if (proposal.Status != ProposalStatuses.Viewed)
+                {
+                    return BadRequest(new
+                    {
+                        message = "A proposal can only be marked accepted after the client has viewed it."
+                    });
+                }
+            }
+
+            if (proposal.Status == next)
+            {
+                return Ok(new { proposal.Id, proposal.Reference, proposal.Status, proposal.UpdatedAt });
+            }
+
+            var before = proposal.Status;
+            var now = DateTimeOffset.UtcNow;
+            proposal.Status = next;
+            proposal.UpdatedAt = now;
+
+            if (next is ProposalStatuses.Sent or ProposalStatuses.Viewed)
+            {
+                proposal.SentAt ??= now;
+                if (!proposal.ExpiresAt.HasValue || proposal.ExpiresAt < now)
+                {
+                    var days = proposal.ValidityDays > 0 ? proposal.ValidityDays : 14;
+                    proposal.ExpiresAt = now.AddDays(days);
+                }
+            }
+
+            await _audit.LogAsync(User, "update", "proposal_status", proposal.Id,
+                new { status = before }, new { status = next });
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                proposal.Id,
+                proposal.Reference,
+                proposal.Status,
+                proposal.UpdatedAt
+            });
+        }
+
         [HttpPatch("{id}")]
         public async Task<IActionResult> UpdateProposal(Guid id, [FromBody] UpdateProposalRequest request)
         {
@@ -1098,9 +1182,13 @@ namespace ProposalStudio.Controllers
         public string? AddonsJson { get; set; }
     }
 
+    public class SetProposalStatusRequest
+    {
+        public string Status { get; set; } = string.Empty;
+    }
+
     public class UpdateProposalRequest
     {
-        public string? Status { get; set; }
         public int? ValidityDays { get; set; }
         public string? Currency { get; set; }
         public string? VatMode { get; set; }

@@ -29,8 +29,8 @@ wwwroot\images\products\593bd66c-bd89-40eb-8fcf-ec92efdcfd5c-main-profile.png
 wwwroot\images\products\593bd66c-bd89-40eb-8fcf-ec92efdcfd5c-additional-2.png
 wwwroot\images\products\593bd66c-bd89-40eb-8fcf-ec92efdcfd5c-additional-1.png
 wwwroot\images\products\32a02b1f-e0b3-46fc-a342-632306d19485-main-profile.png
-wwwroot\images\products\32a02b1f-e0b3-46fc-a342-632306d19485-additional-2.png
-wwwroot\images\products\32a02b1f-e0b3-46fc-a342-632306d19485-additional-1.png
+wwwroot\images\products\thumbs\32a02b1f-e0b3-46fc-a342-632306d19485-additional-1.png
+wwwroot\images\products\thumbs\32a02b1f-e0b3-46fc-a342-632306d19485-additional-2.png
 wwwroot\images\products\c3225755-7cb8-49e2-8b99-7b421e100c13-additional-1.png
 wwwroot\images\products\a39ffc47-38e5-4f46-95f7-f1c5c4e97669-main-profile.png
 wwwroot\images\products\a39ffc47-38e5-4f46-95f7-f1c5c4e97669-additional-2.png
@@ -44,8 +44,8 @@ wwwroot\images\products\f6b2b78c-26dd-4ae6-8cf1-76945ab4a013-main-profile.png
 wwwroot\images\products\thumbs\2bd699f7-0ffb-4cd3-84b1-a7b213b18544-additional-1.png
 wwwroot\images\products\thumbs\2bd699f7-0ffb-4cd3-84b1-a7b213b18544-additional-2.png
 wwwroot\images\products\thumbs\2bd699f7-0ffb-4cd3-84b1-a7b213b18544-main-profile.png
-wwwroot\images\products\thumbs\32a02b1f-e0b3-46fc-a342-632306d19485-additional-1.png
-wwwroot\images\products\thumbs\32a02b1f-e0b3-46fc-a342-632306d19485-additional-2.png
+wwwroot\images\products\32a02b1f-e0b3-46fc-a342-632306d19485-additional-2.png
+wwwroot\images\products\32a02b1f-e0b3-46fc-a342-632306d19485-additional-1.png
 wwwroot\images\products\thumbs\32a02b1f-e0b3-46fc-a342-632306d19485-main-profile.png
 wwwroot\images\products\thumbs\593bd66c-bd89-40eb-8fcf-ec92efdcfd5c-additional-1.png
 wwwroot\images\products\thumbs\593bd66c-bd89-40eb-8fcf-ec92efdcfd5c-additional-2.png
@@ -65,3 +65,4 @@ wwwroot\images\products\thumbs\ea4c53d9-35ff-4ab5-95a9-46794101e4a4-main-profile
 wwwroot\images\products\thumbs\f6b2b78c-26dd-4ae6-8cf1-76945ab4a013-additional-1.png
 wwwroot\images\products\thumbs\f6b2b78c-26dd-4ae6-8cf1-76945ab4a013-additional-2.png
 wwwroot\images\products\thumbs\f6b2b78c-26dd-4ae6-8cf1-76945ab4a013-main-profile.png
+wwwroot\brand\logo-e4739392ccf14863978de86bf29dae16.png
