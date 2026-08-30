@@ -3,6 +3,7 @@ using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProposalStudio.Data;
@@ -12,9 +13,11 @@ using ProposalStudio.Data;
 namespace ProposalStudio.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260830002934_PasswordResets")]
+    partial class PasswordResets
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -713,37 +716,6 @@ namespace ProposalStudio.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("proposals", (string)null);
-                });
-
-            modelBuilder.Entity("ProposalStudio.Models.ProposalEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("IpHash")
-                        .HasColumnType("text")
-                        .HasColumnName("ip_hash");
-
-                    b.Property<Guid>("ProposalId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("proposal_id");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("type");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProposalId", "Type", "CreatedAt");
-
-                    b.ToTable("proposal_events", (string)null);
                 });
 
             modelBuilder.Entity("ProposalStudio.Models.ProposalItem", b =>

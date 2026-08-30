@@ -508,6 +508,22 @@
     "ReturnTypes": []
   },
   {
+    "ContainingType": "ProposalStudio.Controllers.ClientsController",
+    "Method": "GetActivity",
+    "RelativePath": "api/Clients/{id}/activity",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
     "ContainingType": "ProposalStudio.Controllers.GovernanceController",
     "Method": "Get",
     "RelativePath": "api/governance",
@@ -630,6 +646,22 @@
   },
   {
     "ContainingType": "ProposalStudio.Controllers.NotificationsController",
+    "Method": "Confirm",
+    "RelativePath": "api/notifications/{id}/confirm",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.NotificationsController",
     "Method": "MarkRead",
     "RelativePath": "api/notifications/{id}/read",
     "HttpMethod": "POST",
@@ -702,6 +734,85 @@
       {
         "Name": "token",
         "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.PasswordResetsController",
+    "Method": "List",
+    "RelativePath": "api/password-resets",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.PasswordResetsController",
+    "Method": "Create",
+    "RelativePath": "api/password-resets",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "body",
+        "Type": "ProposalStudio.Controllers.CreatePasswordResetRequest",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.PasswordResetsController",
+    "Method": "Revoke",
+    "RelativePath": "api/password-resets/{id}",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.PasswordResetsController",
+    "Method": "Peek",
+    "RelativePath": "api/password-resets/{token}",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "token",
+        "Type": "System.String",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.PasswordResetsController",
+    "Method": "Complete",
+    "RelativePath": "api/password-resets/{token}/complete",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "token",
+        "Type": "System.String",
+        "IsRequired": true
+      },
+      {
+        "Name": "body",
+        "Type": "ProposalStudio.Controllers.CompletePasswordResetRequest",
         "IsRequired": true
       }
     ],
@@ -1012,6 +1123,22 @@
     "Method": "GetBuilderDraft",
     "RelativePath": "api/Proposals/{id}/builder",
     "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "id",
+        "Type": "System.Guid",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "ProposalStudio.Controllers.ProposalsController",
+    "Method": "Duplicate",
+    "RelativePath": "api/Proposals/{id}/duplicate",
+    "HttpMethod": "POST",
     "IsController": true,
     "Order": 0,
     "Parameters": [

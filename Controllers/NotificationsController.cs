@@ -63,6 +63,22 @@ namespace ProposalStudio.Controllers
             return Ok(new { note.Id, note.Read });
         }
 
+        // POST: api/notifications/{id}/confirm — advisor acknowledges a first-open notice
+        [HttpPost("{id:guid}/confirm")]
+        public async Task<IActionResult> Confirm(Guid id)
+        {
+            var userId = CurrentUserId();
+            if (userId == null) return Unauthorized();
+
+            var note = await _context.Notifications.FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
+            if (note == null) return NotFound();
+            if (note.Kind != "proposal_opened") return BadRequest();
+
+            _context.Notifications.Remove(note);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+
         // POST: api/notifications/read-all
         [HttpPost("read-all")]
         public async Task<IActionResult> MarkAllRead()
@@ -71,7 +87,7 @@ namespace ProposalStudio.Controllers
             if (userId == null) return Unauthorized();
 
             var unread = await _context.Notifications
-                .Where(n => n.UserId == userId && !n.Read)
+                .Where(n => n.UserId == userId && !n.Read && n.Kind != "proposal_opened")
                 .ToListAsync();
             foreach (var n in unread)
                 n.Read = true;

@@ -58,7 +58,10 @@ namespace ProposalStudio.Services
         /// </summary>
         public async Task<int> ArchiveNotificationsAsync()
         {
-            var notes = await _db.Notifications.OrderBy(n => n.CreatedAt).ToListAsync();
+            var notes = await _db.Notifications
+                .Where(n => n.Kind != "proposal_opened")
+                .OrderBy(n => n.CreatedAt)
+                .ToListAsync();
             if (notes.Count == 0)
                 return 0;
 

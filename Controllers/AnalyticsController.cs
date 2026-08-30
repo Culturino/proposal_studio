@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -13,10 +14,12 @@ namespace ProposalStudio.Controllers
     public class AnalyticsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly ProposalExpiryService _expiry;
 
-        public AnalyticsController(AppDbContext context)
+        public AnalyticsController(AppDbContext context, ProposalExpiryService expiry)
         {
             _context = context;
+            _expiry = expiry;
         }
 
         // GET: api/analytics/summary?from=&to=
@@ -31,6 +34,8 @@ namespace ProposalStudio.Controllers
                 : (Guid?)null;
 
             var canSeeAll = role is "Admin" or "Manager";
+
+            await _expiry.ExpireOverdueAsync();
 
             var fromDate = from ?? new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-28), TimeSpan.Zero);
             var toDate = to ?? DateTimeOffset.UtcNow;

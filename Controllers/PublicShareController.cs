@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
+using ProposalStudio.Models;
 using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
@@ -18,11 +19,13 @@ namespace ProposalStudio.Controllers
     {
         private readonly AppDbContext _context;
         private readonly ProposalPdfService _pdf;
+        private readonly ProposalExpiryService _expiry;
 
-        public PublicShareController(AppDbContext context, ProposalPdfService pdf)
+        public PublicShareController(AppDbContext context, ProposalPdfService pdf, ProposalExpiryService expiry)
         {
             _context = context;
             _pdf = pdf;
+            _expiry = expiry;
         }
 
         // GET: api/p/{token}
@@ -39,6 +42,13 @@ namespace ProposalStudio.Controllers
             if (proposal == null)
             {
                 return NotFound();
+            }
+
+            if (OfferClosed(link, proposal))
+            {
+                if (_context.ChangeTracker.HasChanges())
+                    await _context.SaveChangesAsync();
+                return GoneExpired();
             }
 
             // Auto-advance Sent → Viewed on first open
@@ -86,6 +96,19 @@ namespace ProposalStudio.Controllers
                 return NotFound("This link is invalid or has been revoked.");
             }
 
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == link.ProposalId);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            if (OfferClosed(link, proposal))
+            {
+                if (_context.ChangeTracker.HasChanges())
+                    await _context.SaveChangesAsync();
+                return GoneExpired();
+            }
+
             var rendered = await _pdf.RenderAsync(_context, link.ProposalId);
             if (rendered == null)
             {
@@ -117,18 +140,57 @@ namespace ProposalStudio.Controllers
                 return NotFound();
             }
 
-            var type = (request?.Type ?? "opened").Trim().ToLowerInvariant();
-            if (type is "opened" or "section_view" or "download")
+            if (OfferClosed(link, proposal))
             {
-                if (proposal.Status == "sent")
-                {
-                    proposal.Status = "viewed";
-                    proposal.UpdatedAt = DateTimeOffset.UtcNow;
+                if (_context.ChangeTracker.HasChanges())
                     await _context.SaveChangesAsync();
-                }
+                return GoneExpired();
             }
 
-            return Ok(new { logged = true, status = proposal.Status });
+            var type = (request?.Type ?? "opened").Trim().ToLowerInvariant();
+            if (type is not ("opened" or "download"))
+                type = "opened";
+
+            var firstOpen = type == "opened" &&
+                !await _context.ProposalEvents.AnyAsync(e => e.ProposalId == proposal.Id && e.Type == "opened");
+
+            _context.ProposalEvents.Add(new ProposalEvent
+            {
+                Id = Guid.NewGuid(),
+                ProposalId = proposal.Id,
+                Type = type,
+                CreatedAt = DateTimeOffset.UtcNow,
+                IpHash = ShareTokenFactory.HashIp(HttpContext.Connection.RemoteIpAddress?.ToString())
+            });
+
+            if (proposal.Status == "sent")
+            {
+                proposal.Status = "viewed";
+                proposal.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+
+            if (firstOpen &&
+                !await _context.Notifications.AnyAsync(n =>
+                    n.Kind == "proposal_opened" && n.RelatedId == proposal.Id))
+            {
+                var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
+                var who = string.IsNullOrWhiteSpace(client?.Name) ? "A client" : client!.Name;
+                _context.Notifications.Add(new AppNotification
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = proposal.AdvisorId,
+                    Title = $"{proposal.Reference} was opened",
+                    Body = $"{who} opened the proposal.",
+                    Kind = "proposal_opened",
+                    RelatedId = proposal.Id,
+                    Read = false,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { logged = true, status = proposal.Status, firstOpen });
         }
 
         private async Task<Models.ShareLink?> ResolveLinkAsync(string token)
@@ -144,12 +206,23 @@ namespace ProposalStudio.Controllers
                 return null;
             }
 
-            if (link.ExpiresAt.HasValue && link.ExpiresAt.Value < DateTimeOffset.UtcNow)
-            {
-                return null;
-            }
-
             return link;
+        }
+
+        private bool OfferClosed(ShareLink link, Proposal proposal)
+        {
+            var now = DateTimeOffset.UtcNow;
+            var linkLapsed = link.ExpiresAt.HasValue && link.ExpiresAt.Value < now;
+            return _expiry.ApplyIfOverdue(proposal, now) || proposal.Status == "expired" || linkLapsed;
+        }
+
+        private ObjectResult GoneExpired()
+        {
+            return StatusCode(StatusCodes.Status410Gone, new
+            {
+                error = "expired",
+                message = "This proposal has expired."
+            });
         }
     }
 

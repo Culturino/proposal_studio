@@ -25,11 +25,13 @@ namespace ProposalStudio.Data
         public DbSet<ProposalItem> ProposalItems { get; set; }
         public DbSet<GovernanceSettings> GovernanceSettings { get; set; }
         public DbSet<ShareLink> ShareLinks { get; set; }
+        public DbSet<ProposalEvent> ProposalEvents { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<ApprovalRequest> ApprovalRequests { get; set; }
         public DbSet<AppNotification> Notifications { get; set; }
         public DbSet<SeedMeta> SeedMeta { get; set; }
         public DbSet<UserInvite> UserInvites { get; set; }
+        public DbSet<PasswordReset> PasswordResets { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -278,6 +280,18 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
             });
 
+            modelBuilder.Entity<ProposalEvent>(entity =>
+            {
+                entity.ToTable("proposal_events");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProposalId).HasColumnName("proposal_id");
+                entity.Property(e => e.Type).HasColumnName("type");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.IpHash).HasColumnName("ip_hash");
+                entity.HasIndex(e => new { e.ProposalId, e.Type, e.CreatedAt });
+            });
+
             modelBuilder.Entity<ShareLink>(entity =>
             {
                 entity.ToTable("share_links");
@@ -368,6 +382,21 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
                 entity.Property(e => e.UsedAt).HasColumnName("used_at");
                 entity.Property(e => e.CreatedUserId).HasColumnName("created_user_id");
+                entity.Property(e => e.Revoked).HasColumnName("revoked");
+                entity.HasIndex(e => e.Token).IsUnique();
+            });
+
+            modelBuilder.Entity<PasswordReset>(entity =>
+            {
+                entity.ToTable("password_resets");
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Token).HasColumnName("token");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+                entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+                entity.Property(e => e.CreatedAt).HasColumnName("created_at");
+                entity.Property(e => e.ExpiresAt).HasColumnName("expires_at");
+                entity.Property(e => e.UsedAt).HasColumnName("used_at");
                 entity.Property(e => e.Revoked).HasColumnName("revoked");
                 entity.HasIndex(e => e.Token).IsUnique();
             });

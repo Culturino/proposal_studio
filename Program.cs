@@ -21,6 +21,7 @@ builder.Services.AddControllers().AddNewtonsoftJson(options =>
     options.SerializerSettings.Converters.Add(new JsonDocumentConverter()));
 builder.Services.AddScoped<PricingGovernance>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<ProposalExpiryService>();
 builder.Services.AddSingleton<ProductImageStore>();
 builder.Services.AddSingleton<ProposalPdfService>();
 
@@ -130,6 +131,19 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
         logger.LogError(ex, "Notification archive failed — API will still start");
+    }
+
+    try
+    {
+        var expired = await scope.ServiceProvider
+            .GetRequiredService<ProposalExpiryService>()
+            .ExpireOverdueAsync();
+        if (expired > 0)
+            logger.LogInformation("Marked {Count} overdue proposal(s) expired.", expired);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Proposal expiry sweep failed — API will still start");
     }
 }
 

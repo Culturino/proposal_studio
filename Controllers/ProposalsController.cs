@@ -17,15 +17,18 @@ namespace ProposalStudio.Controllers
         private readonly AppDbContext _context;
         private readonly PricingGovernance _pricing;
         private readonly ProposalPdfService _pdf;
+        private readonly ProposalExpiryService _expiry;
 
         public ProposalsController(
             AppDbContext context,
             PricingGovernance pricing,
-            ProposalPdfService pdf)
+            ProposalPdfService pdf,
+            ProposalExpiryService expiry)
         {
             _context = context;
             _pricing = pricing;
             _pdf = pdf;
+            _expiry = expiry;
         }
 
         // GET: api/proposals?status=&advisor=&q=
@@ -39,6 +42,8 @@ namespace ProposalStudio.Controllers
             var userId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid)
                 ? uid
                 : (Guid?)null;
+
+            await _expiry.ExpireOverdueAsync();
 
             var query =
                 from proposal in _context.Proposals
@@ -85,6 +90,7 @@ namespace ProposalStudio.Controllers
                     x.proposal.PriceTotal,
                     x.proposal.CreatedAt,
                     x.proposal.UpdatedAt,
+                    x.proposal.ExpiresAt,
                     x.proposal.PdfUrl,
                     Client = new { x.client.Id, x.client.Name, x.client.Email, x.client.Phone },
                     Advisor = new { x.adv.Id, x.adv.Name, x.adv.Email },
@@ -106,6 +112,8 @@ namespace ProposalStudio.Controllers
             {
                 return Forbid();
             }
+
+            await _expiry.ExpireOverdueAsync();
 
             var proposal = await (
                 from p in _context.Proposals
@@ -538,6 +546,127 @@ namespace ProposalStudio.Controllers
             return File(bytes, "application/pdf", fileName);
         }
 
+        // POST: api/proposals/{id}/duplicate — new draft for the same client, copied config
+        [HttpPost("{id}/duplicate")]
+        public async Task<IActionResult> Duplicate(Guid id)
+        {
+            if (!await CanAccessProposalAsync(id))
+            {
+                return Forbid();
+            }
+
+            var source = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
+            if (source == null)
+                return NotFound();
+
+            var callerId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var cid)
+                ? cid
+                : source.AdvisorId;
+
+            var advisorExists = await _context.Users.AnyAsync(u => u.Id == callerId && u.Active);
+            if (!advisorExists)
+                callerId = source.AdvisorId;
+
+            var lastReferenceNumber = await _context.Proposals
+                .Where(p => p.BusinessId == source.BusinessId)
+                .MaxAsync(p => (int?)p.ReferenceNumber);
+
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == source.BusinessId);
+            var nextReferenceNumber = (lastReferenceNumber ?? 1000) + 1;
+            var prefix = business?.ReferencePrefix ?? "HOP";
+            var now = DateTimeOffset.UtcNow;
+
+            var copy = new Proposal
+            {
+                Id = Guid.NewGuid(),
+                BusinessId = source.BusinessId,
+                ReferenceNumber = nextReferenceNumber,
+                Reference = $"{prefix}-{nextReferenceNumber}",
+                TemplateId = source.TemplateId,
+                TemplateVersion = source.TemplateVersion,
+                ClientId = source.ClientId,
+                AdvisorId = callerId,
+                Currency = source.Currency,
+                VatMode = source.VatMode,
+                ValidityDays = source.ValidityDays,
+                Status = "draft",
+                PriceTotal = source.PriceTotal,
+                CreatedAt = now,
+                UpdatedAt = now,
+                SentAt = null,
+                ExpiresAt = now.AddDays(source.ValidityDays > 0 ? source.ValidityDays : 14),
+                Snapshot = null,
+                PdfUrl = null
+            };
+
+            _context.Proposals.Add(copy);
+
+            var sourceItem = await _context.ProposalItems
+                .AsNoTracking()
+                .FirstOrDefaultAsync(i => i.ProposalId == id);
+            if (sourceItem != null)
+            {
+                // jsonb JsonDocument from Npgsql is often already disposed on the tracked
+                // entity — read the column as text so we can clone it safely.
+                var addonsJson = await _context.Database
+                    .SqlQueryRaw<string>(
+                        """SELECT COALESCE(addons::text, '[]') AS "Value" FROM proposal_items WHERE proposal_id = {0}""",
+                        id)
+                    .FirstOrDefaultAsync();
+                if (string.IsNullOrWhiteSpace(addonsJson))
+                    addonsJson = "[]";
+
+                JsonDocument addons;
+                try
+                {
+                    addons = JsonDocument.Parse(addonsJson);
+                }
+                catch (JsonException)
+                {
+                    addons = JsonDocument.Parse("[]");
+                }
+
+                _context.ProposalItems.Add(new ProposalItem
+                {
+                    Id = Guid.NewGuid(),
+                    ProposalId = copy.Id,
+                    ProductId = sourceItem.ProductId,
+                    Finish = sourceItem.Finish,
+                    Qty = sourceItem.Qty <= 0 ? 1 : sourceItem.Qty,
+                    UnitPrice = sourceItem.UnitPrice,
+                    PriceOverride = sourceItem.PriceOverride,
+                    Included = sourceItem.Included?.ToArray() ?? Array.Empty<string>(),
+                    Excluded = sourceItem.Excluded?.ToArray() ?? Array.Empty<string>(),
+                    Addons = addons,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                });
+            }
+
+            await _context.SaveChangesAsync();
+            if (sourceItem != null)
+            {
+                try
+                {
+                    await _pdf.RefreshContentAsync(_context, copy.Id);
+                }
+                catch
+                {
+                    // The draft is already saved; preview can rebuild the snapshot later.
+                }
+            }
+
+            return Ok(new
+            {
+                copy.Id,
+                copy.Reference,
+                copy.Status,
+                copy.ClientId,
+                sourceId = source.Id,
+                sourceReference = source.Reference
+            });
+        }
+
         // POST: api/proposals/{id}/send — Phase 1: mark sent; block below-floor prices
         [HttpPost("{id}/send")]
         public async Task<IActionResult> Send(Guid id)
@@ -552,6 +681,9 @@ namespace ProposalStudio.Controllers
             {
                 return NotFound();
             }
+
+            if (_expiry.ApplyIfOverdue(proposal))
+                await _context.SaveChangesAsync();
 
             if (proposal.Status != "draft" && proposal.Status != "sent")
             {
@@ -622,6 +754,13 @@ namespace ProposalStudio.Controllers
                 .OrderByDescending(p => p.ValidFrom)
                 .Select(p => p.Amount)
                 .FirstOrDefaultAsync();
+
+            if (_expiry.ApplyIfOverdue(proposal) || proposal.Status == "expired")
+            {
+                if (_context.ChangeTracker.HasChanges())
+                    await _context.SaveChangesAsync();
+                return BadRequest("This proposal has expired. Duplicate it to send a new offer.");
+            }
 
             var blocked = await GovernanceSendBlockAsync(proposal, item, catalogAmount, sharing: true);
             if (blocked != null)
@@ -761,6 +900,9 @@ namespace ProposalStudio.Controllers
                 return NotFound();
             }
 
+            if (_expiry.ApplyIfOverdue(proposal))
+                await _context.SaveChangesAsync();
+
             if (proposal.Status is not ("draft" or "sent" or "viewed"))
             {
                 return BadRequest("Only draft, sent, or viewed proposals can be edited.");
@@ -769,7 +911,8 @@ namespace ProposalStudio.Controllers
             if (request.ValidityDays.HasValue)
             {
                 proposal.ValidityDays = request.ValidityDays.Value;
-                proposal.ExpiresAt = proposal.CreatedAt.AddDays(request.ValidityDays.Value);
+                var basis = proposal.SentAt ?? proposal.CreatedAt;
+                proposal.ExpiresAt = basis.AddDays(request.ValidityDays.Value);
             }
 
             if (request.Currency != null && !string.IsNullOrWhiteSpace(request.Currency))
