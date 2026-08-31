@@ -258,37 +258,6 @@ namespace ProposalStudio.Controllers
             return Ok(rows);
         }
 
-        // GET: api/approvals/for-proposal/{proposalId}
-        [HttpGet("for-proposal/{proposalId:guid}")]
-        public async Task<IActionResult> ForProposal(Guid proposalId)
-        {
-            var access = await BusinessScope.ResolveAsync(_context, User);
-            if (!access.Ok)
-                return BadRequest(BusinessScope.MissingMessage);
-
-            var owned = await BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId)
-                .AnyAsync(p => p.Id == proposalId);
-            if (!owned)
-                return NotFound();
-
-            var latest = await _context.ApprovalRequests
-                .Where(a => a.ProposalId == proposalId && a.Kind == "below_floor")
-                .OrderByDescending(a => a.CreatedAt)
-                .Select(a => new
-                {
-                    a.Id,
-                    a.Status,
-                    a.OfferedPrice,
-                    a.FloorPrice,
-                    a.CreatedAt,
-                    a.DecidedAt,
-                    a.ApproverId
-                })
-                .FirstOrDefaultAsync();
-
-            return Ok(latest);
-        }
-
         // POST: api/approvals/{id}/decide
         [HttpPost("{id:guid}/decide")]
         [Authorize(Roles = "Admin,Manager")]

@@ -80,7 +80,6 @@ namespace ProposalStudio.Controllers
                 ClientName = client?.Name,
                 AdvisorName = advisor?.Name,
                 BusinessName = business?.Name,
-                ContactLine = (string?)null,
                 PdfAvailable = hasItem,
                 PdfPath = $"/api/p/{link.Token}/pdf"
             });
@@ -319,7 +318,6 @@ namespace ProposalStudio.Controllers
     public class PublicEventRequest
     {
         public string? Type { get; set; }
-        public string? Section { get; set; }
     }
 
     public static class ShareTokenFactory

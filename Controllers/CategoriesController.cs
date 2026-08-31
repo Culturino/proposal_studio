@@ -38,7 +38,6 @@ namespace ProposalStudio.Controllers
                     c.Name,
                     c.Slug,
                     c.Active,
-                    c.SortOrder,
                     ProductCount = _context.Products.Count(p =>
                         p.CategoryId == c.Id && p.Status != "archived" && p.Status != "deleted"),
                     c.CreatedAt,
@@ -96,11 +95,6 @@ namespace ProposalStudio.Controllers
                 return Conflict($"A category with slug \"{slug}\" already exists.");
             }
 
-            var maxOrder = await _context.ProductCategories
-                .Where(c => c.BusinessId == businessId)
-                .Select(c => (int?)c.SortOrder)
-                .MaxAsync() ?? 0;
-
             var category = new ProductCategory
             {
                 Id = Guid.NewGuid(),
@@ -108,7 +102,6 @@ namespace ProposalStudio.Controllers
                 Name = name,
                 Slug = slug,
                 Active = true,
-                SortOrder = maxOrder + 1,
                 CreatedAt = DateTimeOffset.UtcNow,
                 UpdatedAt = DateTimeOffset.UtcNow
             };

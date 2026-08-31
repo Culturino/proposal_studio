@@ -157,28 +157,6 @@ namespace ProposalStudio.Controllers
             return Ok(product);
         }
 
-        // GET: api/products/{id}/finishes
-        [HttpGet("{id}/finishes")]
-        public async Task<IActionResult> GetFinishes(Guid id)
-        {
-            var access = await BusinessScope.ResolveAsync(_context, User);
-            if (!access.Ok)
-                return BadRequest(BusinessScope.MissingMessage);
-
-            if (!await ProductInBusinessAsync(id, access))
-                return NotFound("Product not found");
-
-            var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Id == id);
-
-            if (product == null)
-            {
-                return NotFound("Product not found");
-            }
-
-            return Ok(product.Finishes ?? Array.Empty<string>());
-        }
-
         // GET: api/products/{id}/image?slot=1&variant=thumb (public)
         // slot 1 is the full profile shot; 2 and 3 are the additional views.
         [HttpGet("{id}/image")]

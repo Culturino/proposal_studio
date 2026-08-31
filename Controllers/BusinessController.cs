@@ -25,7 +25,11 @@ namespace ProposalStudio.Controllers
         {
             Business? row = null;
             if (User.Identity?.IsAuthenticated == true)
-                row = await BusinessScope.ForUserAsync(_context, User);
+            {
+                var access = await BusinessScope.ResolveAsync(_context, User);
+                if (access.HomeId is Guid id)
+                    row = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == id && b.Active);
+            }
 
             row ??= await _context.Businesses
                 .Where(b => b.Active)
@@ -74,57 +78,6 @@ namespace ProposalStudio.Controllers
                 .ToListAsync();
 
             return Ok(businesses);
-        }
-
-        // GET: api/businesses/{id}
-        [HttpGet("{id:guid}")]
-        public async Task<ActionResult<Business>> GetBusiness(Guid id)
-        {
-            var access = await BusinessScope.ResolveAsync(_context, User);
-            if (!access.Ok)
-                return BadRequest(BusinessScope.MissingMessage);
-
-            if (!access.Unrestricted && access.HomeId != id)
-                return NotFound();
-
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Id == id);
-
-            if (business == null)
-            {
-                return NotFound();
-            }
-
-            return Ok(business);
-        }
-
-        // POST: api/businesses
-        [HttpPost]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> CreateBusiness([FromBody] CreateBusinessRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Slug))
-            {
-                return BadRequest("Business name and slug are required.");
-            }
-
-            var business = new Business
-            {
-                Id = Guid.NewGuid(),
-                Name = request.Name.Trim(),
-                Slug = request.Slug.Trim().ToLower(),
-                ReferencePrefix = string.IsNullOrWhiteSpace(request.ReferencePrefix) ? "" : request.ReferencePrefix.Trim(),
-                Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
-                BrandKitId = request.BrandKitId,
-                Active = true,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-
-            _context.Businesses.Add(business);
-            await _context.SaveChangesAsync();
-
-            return CreatedAtAction(nameof(GetBusiness), new { id = business.Id }, business);
         }
 
         // PATCH: api/businesses/{id}
@@ -202,40 +155,6 @@ namespace ProposalStudio.Controllers
 
             return Ok(business);
         }
-
-        // DELETE: api/businesses/{id}
-        [HttpDelete("{id:guid}")]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> DeleteBusiness(Guid id)
-        {
-            var access = await BusinessScope.ResolveAsync(_context, User);
-            if (!access.Ok)
-                return BadRequest(BusinessScope.MissingMessage);
-
-            if (!access.Unrestricted && access.HomeId != id)
-                return NotFound();
-
-            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == id);
-
-            if (business == null)
-            {
-                return NotFound();
-            }
-
-            _context.Businesses.Remove(business);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-    }
-
-    public class CreateBusinessRequest
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Slug { get; set; } = string.Empty;
-        public string? ReferencePrefix { get; set; }
-        public string? Blurb { get; set; }
-        public Guid? BrandKitId { get; set; }
     }
 
     public class UpdateBusinessRequest

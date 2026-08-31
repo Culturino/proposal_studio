@@ -1057,24 +1057,6 @@ namespace ProposalStudio.Controllers
             });
         }
 
-        [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin,Manager")]
-        public async Task<IActionResult> DeleteProposal(Guid id)
-        {
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == id);
-            if (proposal == null)
-            {
-                return NotFound();
-            }
-
-            var items = await _context.ProposalItems.Where(i => i.ProposalId == id).ToListAsync();
-            _context.ProposalItems.RemoveRange(items);
-            _context.Proposals.Remove(proposal);
-            await _context.SaveChangesAsync();
-
-            return NoContent();
-        }
-
         /// <summary>
         /// Spec §5.6: advisors cannot send or share a below-floor offer, or a deal at/above
         /// the high-value threshold, without manager/admin approval.

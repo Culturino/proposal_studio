@@ -134,20 +134,20 @@ namespace ProposalStudio.Data
         private static async Task<Dictionary<string, ProductCategory>> EnsureCategoriesAsync(
             AppDbContext db, Business business, DateTimeOffset now)
         {
-            var defs = new (string Name, string Slug, int Order)[]
+            var defs = new (string Name, string Slug)[]
             {
-                ("Concert Grand", "concert-grand", 1),
-                ("Grand", "grand", 2),
-                ("Baby Grand", "baby-grand", 3),
-                ("Upright", "upright", 4),
-                ("Digital", "digital", 5)
+                ("Concert Grand", "concert-grand"),
+                ("Grand", "grand"),
+                ("Baby Grand", "baby-grand"),
+                ("Upright", "upright"),
+                ("Digital", "digital")
             };
 
             var existing = await db.ProductCategories
                 .Where(c => c.BusinessId == business.Id)
                 .ToDictionaryAsync(c => c.Slug, StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (name, slug, order) in defs)
+            foreach (var (name, slug) in defs)
             {
                 if (existing.ContainsKey(slug))
                     continue;
@@ -159,7 +159,6 @@ namespace ProposalStudio.Data
                     Name = name,
                     Slug = slug,
                     Active = true,
-                    SortOrder = order,
                     CreatedAt = now,
                     UpdatedAt = now
                 };

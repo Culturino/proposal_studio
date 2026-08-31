@@ -148,8 +148,7 @@ namespace ProposalStudio.Services
             c.Id,
             c.Name,
             c.Slug,
-            c.Active,
-            c.SortOrder
+            c.Active
         };
 
         public static object PriceSnapshot(Price p) => new

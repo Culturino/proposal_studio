@@ -108,7 +108,6 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Name).HasColumnName("name");
                 entity.Property(e => e.Slug).HasColumnName("slug");
                 entity.Property(e => e.Active).HasColumnName("active");
-                entity.Property(e => e.SortOrder).HasColumnName("sort_order");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");
                 entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
 

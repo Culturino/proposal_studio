@@ -653,10 +653,6 @@ namespace ProposalStudio.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("slug");
 
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("integer")
-                        .HasColumnName("sort_order");
-
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
