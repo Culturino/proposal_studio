@@ -17,11 +17,13 @@ namespace ProposalStudio.Services
         };
 
         private readonly AppDbContext _db;
+        private readonly ObjectMediaStore _media;
         private readonly string _brandDir;
 
-        public BrandStyleService(AppDbContext db, IWebHostEnvironment env)
+        public BrandStyleService(AppDbContext db, IWebHostEnvironment env, ObjectMediaStore media)
         {
             _db = db;
+            _media = media;
             var webRoot = env.WebRootPath
                 ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
             _brandDir = Path.Combine(webRoot, "brand");
@@ -239,8 +241,11 @@ namespace ProposalStudio.Services
             var dest = Path.Combine(_brandDir, fileName);
             using var image = SKImage.FromBitmap(bitmap);
             using var encoded = image.Encode(SKEncodedImageFormat.Png, 100);
-            await using var file = File.Create(dest);
-            encoded.SaveTo(file);
+            await using (var file = File.Create(dest))
+            {
+                encoded.SaveTo(file);
+            }
+            await _media.UploadFileAsync($"brand/{fileName}", dest);
             return fileName;
         }
 

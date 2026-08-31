@@ -16,12 +16,12 @@ namespace ProposalStudio.Data
 
         /// <summary>
         /// Also create Layla / Omar / Sara when <see cref="DemoUsers"/> is on.
-        /// Off in the Windows pack so only the admin account exists.
+        /// Off on Host so only the admin account exists.
         /// </summary>
         public bool DemoTeam { get; set; } = true;
 
         /// <summary>
-        /// Seed Steinway catalog products and addons. Off in the Windows pack —
+        /// Seed Steinway catalog products and addons. Off on Host —
         /// those rows get new ids that do not match photos on disk.
         /// </summary>
         public bool SeedCatalog { get; set; } = true;

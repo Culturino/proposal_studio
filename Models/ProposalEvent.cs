@@ -1,7 +1,7 @@
 namespace ProposalStudio.Models
 {
     /// <summary>
-    /// Public share-link event (opened / download). Spec §5.8 / §12 hashes the IP.
+    /// Public share-link event (opened / download / accepted). Spec §5.8 / §12 hashes the IP.
     /// </summary>
     public class ProposalEvent
     {
@@ -9,7 +9,7 @@ namespace ProposalStudio.Models
 
         public Guid ProposalId { get; set; }
 
-        /// <summary>opened | download</summary>
+        /// <summary>opened | download | accepted</summary>
         public string Type { get; set; } = "opened";
 
         public DateTimeOffset CreatedAt { get; set; }

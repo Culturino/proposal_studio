@@ -46,9 +46,10 @@ namespace ProposalStudio.Controllers
             }
 
             var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.UTF8.GetBytes(
-                _configuration["JwtSettings:SecretKey"] ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong"
-            );
+            var jwtKey = _configuration["JwtSettings:SecretKey"];
+            if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+                throw new InvalidOperationException("JwtSettings__SecretKey is not configured.");
+            var key = Encoding.UTF8.GetBytes(jwtKey);
 
             // JWT role claim (Authorize Roles=) vs app role (frontend capabilities)
             var (jwtRole, appRole) = MapRole(user.Role);
@@ -62,6 +63,8 @@ namespace ProposalStudio.Controllers
                     new Claim(ClaimTypes.Name, user.Name ?? string.Empty),
                     new Claim(ClaimTypes.Role, jwtRole)
                 }),
+                Issuer = _configuration["JwtSettings:Issuer"] ?? "ProposalStudio",
+                Audience = _configuration["JwtSettings:Audience"] ?? "ProposalStudio",
                 Expires = DateTime.UtcNow.AddHours(8),
                 SigningCredentials = new SigningCredentials(
                     new SymmetricSecurityKey(key),

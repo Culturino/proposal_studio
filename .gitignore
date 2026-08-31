@@ -1,1 +1,16 @@
 .vs/
+bin/
+obj/
+.env
+.env.local
+.demo-login.txt
+deploy/.secrets/
+deploy/.secrets-meta.txt
+deploy/publish/
+deploy/publish.zip
+deploy/publish.tar.gz
+deploy/*.tar.gz
+deploy/db.dump
+deploy/accept-button/
+deploy/session-update/
+deploy/www-update/

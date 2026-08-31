@@ -9,12 +9,29 @@ using ProposalStudio.Data;
 using ProposalStudio.Serialization;
 using ProposalStudio.Services;
 
+EnvFile.Load(Path.Combine(Directory.GetCurrentDirectory(), ".env"));
+
 var builder = WebApplication.CreateBuilder(args);
+var hosted = builder.Environment.IsEnvironment("Host");
+
+var connection = builder.Configuration.GetConnectionString("DefaultConnection");
+var jwtKey = builder.Configuration["JwtSettings:SecretKey"];
+var jwtIssuer = builder.Configuration["JwtSettings:Issuer"] ?? "ProposalStudio";
+var jwtAudience = builder.Configuration["JwtSettings:Audience"] ?? "ProposalStudio";
+if (string.IsNullOrWhiteSpace(connection))
+    throw new InvalidOperationException("Set ConnectionStrings__DefaultConnection in the environment or .env.");
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+    throw new InvalidOperationException("Set JwtSettings__SecretKey (at least 32 characters) in the environment or .env.");
+if (jwtKey == "YourSuperSecretKeyThatIsAtLeast32CharactersLong")
+    throw new InvalidOperationException("JwtSettings__SecretKey is still the public sample value. Put a new key in .env.");
+
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? Array.Empty<string>();
 
 // -------------------- SERVICES --------------------
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connection));
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 
@@ -33,52 +50,57 @@ builder.Services.AddScoped<PricingGovernance>();
 builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<ProposalExpiryService>();
 builder.Services.AddScoped<BrandStyleService>();
+builder.Services.AddSingleton<ObjectMediaStore>();
 builder.Services.AddSingleton<ProductImageStore>();
 builder.Services.AddSingleton<ProposalPdfService>();
 
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
+#if DEBUG
+if (builder.Environment.IsDevelopment())
 {
-    c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(c =>
     {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
-
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Description = "Enter your JWT token"
-    });
-
-    c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
+        c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
         {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            Name = "Authorization",
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "Bearer",
+            BearerFormat = "JWT",
+            In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+            Description = "Enter your JWT token"
+        });
+
+        c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+        {
             {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
-                    Id = "Bearer",
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
-                }
-            },
-            new List<string>()
-        }
+                    Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                    {
+                        Id = "Bearer",
+                        Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme
+                    }
+                },
+                new List<string>()
+            }
+        });
     });
-});
+}
+#endif
 
-builder.Services.AddCors(options =>
+if (corsOrigins.Length > 0)
 {
-    options.AddPolicy("AllowFrontend", policy =>
+    builder.Services.AddCors(options =>
     {
-        policy
-            .AllowAnyOrigin()
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        options.AddPolicy("AllowFrontend", policy =>
+        {
+            policy
+                .WithOrigins(corsOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        });
     });
-});
-
-var jwtKey = builder.Configuration["JwtSettings:SecretKey"]
-    ?? "YourSuperSecretKeyThatIsAtLeast32CharactersLong";
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -87,15 +109,20 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false;
-    options.SaveToken = true;
+    options.RequireHttpsMetadata = !hosted;
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-        ValidateIssuer = false,
-        ValidateAudience = false,
+        ValidateIssuer = true,
+        ValidIssuer = jwtIssuer,
+        ValidateAudience = true,
+        ValidAudience = jwtAudience,
         RoleClaimType = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
+    };
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = JwtSessionEvents.RejectInactiveUsers
     };
 });
 
@@ -160,14 +187,15 @@ using (var scope = app.Services.CreateScope())
 
 // -------------------- PIPELINE --------------------
 
+#if DEBUG
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+#endif
 
-var packed = app.Environment.IsEnvironment("Pack");
-if (!packed)
+if (!hosted)
 {
     app.UseHttpsRedirection();
 }
@@ -176,6 +204,10 @@ if (!packed)
 // middleware runs before UseAuthentication so catalog images load for login prefetch.
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "images", "products"));
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "pdfs"));
+var webRoot = app.Environment.WebRootPath
+    ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+await app.Services.GetRequiredService<ObjectMediaStore>()
+    .RestoreAsync(webRoot, "images/products", "brand");
 app.Services.GetRequiredService<ProductImageStore>().AdoptExisting();
 
 app.UseDefaultFiles();
@@ -196,12 +228,16 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
-// Missing /images or /pdfs must not fall through to the JWT FallbackPolicy
-// (browser <img> tags never send Authorization → would become 401 instead of 404).
+// Missing static files must not fall through to the JWT FallbackPolicy
+// (browser <img> / @font-face never send Authorization → would become 401 instead of 404).
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path;
-    if (path.StartsWithSegments("/images") || path.StartsWithSegments("/pdfs"))
+    if (path.StartsWithSegments("/images") ||
+        path.StartsWithSegments("/pdfs") ||
+        path.StartsWithSegments("/fonts") ||
+        path.StartsWithSegments("/brand") ||
+        path.StartsWithSegments("/assets"))
     {
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         return;
@@ -210,12 +246,15 @@ app.Use(async (context, next) =>
 });
 
 app.UseRouting();
-app.UseCors("AllowFrontend");
+if (corsOrigins.Length > 0)
+{
+    app.UseCors("AllowFrontend");
+}
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 
-if (packed)
+if (hosted)
 {
     app.MapFallbackToFile("index.html").AllowAnonymous();
 }

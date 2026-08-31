@@ -193,6 +193,91 @@ namespace ProposalStudio.Controllers
             return Ok(new { logged = true, status = proposal.Status, firstOpen });
         }
 
+        // POST: api/p/{token}/accept — client accepts from the public PDF view
+        [HttpPost("{token}/accept")]
+        public async Task<IActionResult> Accept(string token, [FromBody] PublicAcceptRequest? request)
+        {
+            var link = await ResolveLinkAsync(token);
+            if (link == null)
+            {
+                return NotFound("This link is invalid or has been revoked.");
+            }
+
+            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == link.ProposalId);
+            if (proposal == null)
+            {
+                return NotFound();
+            }
+
+            if (OfferClosed(link, proposal))
+            {
+                if (_context.ChangeTracker.HasChanges())
+                    await _context.SaveChangesAsync();
+                return GoneExpired();
+            }
+
+            if (proposal.Status == ProposalStatuses.Draft)
+            {
+                return BadRequest(new { message = "This proposal has not been sent yet." });
+            }
+
+            var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == proposal.ClientId);
+            var signer = (request?.Name ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(signer))
+                signer = client?.Name?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(signer))
+            {
+                return BadRequest(new { message = "Please type your name to accept." });
+            }
+
+            if (proposal.Status == ProposalStatuses.Accepted)
+            {
+                return Ok(new
+                {
+                    accepted = true,
+                    status = proposal.Status,
+                    signedBy = signer
+                });
+            }
+
+            proposal.Status = ProposalStatuses.Accepted;
+            proposal.UpdatedAt = DateTimeOffset.UtcNow;
+
+            _context.ProposalEvents.Add(new ProposalEvent
+            {
+                Id = Guid.NewGuid(),
+                ProposalId = proposal.Id,
+                Type = "accepted",
+                CreatedAt = DateTimeOffset.UtcNow,
+                IpHash = ShareTokenFactory.HashIp(HttpContext.Connection.RemoteIpAddress?.ToString())
+            });
+
+            if (!await _context.Notifications.AnyAsync(n =>
+                    n.Kind == "proposal_accepted" && n.RelatedId == proposal.Id))
+            {
+                _context.Notifications.Add(new AppNotification
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = proposal.AdvisorId,
+                    Title = $"{proposal.Reference} was accepted",
+                    Body = $"{signer} accepted the proposal.",
+                    Kind = "proposal_accepted",
+                    RelatedId = proposal.Id,
+                    Read = false,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                accepted = true,
+                status = proposal.Status,
+                signedBy = signer
+            });
+        }
+
         private async Task<Models.ShareLink?> ResolveLinkAsync(string token)
         {
             if (string.IsNullOrWhiteSpace(token) || token.Length < 16)
@@ -224,6 +309,11 @@ namespace ProposalStudio.Controllers
                 message = "This proposal has expired."
             });
         }
+    }
+
+    public class PublicAcceptRequest
+    {
+        public string? Name { get; set; }
     }
 
     public class PublicEventRequest

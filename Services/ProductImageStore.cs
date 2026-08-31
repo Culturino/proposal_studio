@@ -40,14 +40,19 @@ namespace ProposalStudio.Services
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private readonly string _root;
+        private readonly ObjectMediaStore _media;
         private readonly ILogger<ProductImageStore> _logger;
 
-        public ProductImageStore(IWebHostEnvironment environment, ILogger<ProductImageStore> logger)
+        public ProductImageStore(
+            IWebHostEnvironment environment,
+            ObjectMediaStore media,
+            ILogger<ProductImageStore> logger)
         {
             var webRoot = environment.WebRootPath
                 ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
 
             _root = Path.Combine(webRoot, "images", "products");
+            _media = media;
             _logger = logger;
         }
 
@@ -112,7 +117,10 @@ namespace ProposalStudio.Services
                 {
                     var converted = SaveWithImageSharp(buffer, dest, thumb);
                     if (converted.Success)
+                    {
                         DeleteLegacy(productId, slot);
+                        await PublishAsync(productId, slot, dest, thumb);
+                    }
                     return converted;
                 }
 
@@ -121,7 +129,10 @@ namespace ProposalStudio.Services
                 {
                     var converted = SaveWithImageSharp(buffer, dest, thumb);
                     if (converted.Success)
+                    {
                         DeleteLegacy(productId, slot);
+                        await PublishAsync(productId, slot, dest, thumb);
+                    }
                     return converted;
                 }
 
@@ -134,6 +145,7 @@ namespace ProposalStudio.Services
 
                 WriteThumbnail(bitmap, thumb);
                 DeleteLegacy(productId, slot);
+                await PublishAsync(productId, slot, dest, thumb);
 
                 return ImageSaveResult.Saved(bitmap.Width, bitmap.Height, HasTransparency(bitmap));
             }
@@ -158,6 +170,17 @@ namespace ProposalStudio.Services
                 if (File.Exists(path))
                     File.Delete(path);
             }
+
+            _media.DeleteAsync($"images/products/{FileName(productId, slot)}").GetAwaiter().GetResult();
+            _media.DeleteAsync($"images/products/{LegacyFileName(productId, slot)}").GetAwaiter().GetResult();
+            _media.DeleteAsync($"images/products/thumbs/{FileName(productId, slot)}").GetAwaiter().GetResult();
+            _media.DeleteAsync($"images/products/thumbs/{LegacyFileName(productId, slot)}").GetAwaiter().GetResult();
+        }
+
+        private async Task PublishAsync(Guid productId, int slot, string dest, string thumb)
+        {
+            await _media.UploadFileAsync($"images/products/{FileName(productId, slot)}", dest);
+            await _media.UploadFileAsync($"images/products/thumbs/{FileName(productId, slot)}", thumb);
         }
 
         /// <summary>
