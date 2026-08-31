@@ -26,8 +26,18 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpsertPrice(Guid productId, [FromBody] UpsertPriceRequest request)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == productId);
-            if (product == null)
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var owned = await (
+                from p in _context.Products
+                join b in BusinessScope.Filter(_context.Brands, access, x => x.BusinessId)
+                    on p.BrandId equals b.Id
+                where p.Id == productId
+                select p
+            ).AnyAsync();
+            if (!owned)
                 return NotFound("Product was not found.");
 
             var currency = string.IsNullOrWhiteSpace(request.Currency) ? "AED" : request.Currency.Trim().ToUpperInvariant();

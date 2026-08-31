@@ -46,10 +46,14 @@ namespace ProposalStudio.Controllers
                 ? uid
                 : (Guid?)null;
 
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
             await _expiry.ExpireOverdueAsync();
 
             var query =
-                from proposal in _context.Proposals
+                from proposal in BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId)
                 join client in _context.Clients on proposal.ClientId equals client.Id
                 join adv in _context.Users on proposal.AdvisorId equals adv.Id
                 join template in _context.Templates on proposal.TemplateId equals template.Id
@@ -172,34 +176,33 @@ namespace ProposalStudio.Controllers
         [HttpPost]
         public async Task<IActionResult> CreateProposal(CreateProposalRequest request)
         {
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
 
-            if (business == null)
-            {
-                return BadRequest("Default business was not found.");
-            }
-
-            var client = await _context.Clients
-                .FirstOrDefaultAsync(c => c.Id == request.ClientId && c.BusinessId == business.Id);
+            var client = await BusinessScope.Filter(_context.Clients, access, c => c.BusinessId)
+                .FirstOrDefaultAsync(c => c.Id == request.ClientId);
 
             if (client == null)
             {
                 return BadRequest("Client was not found.");
             }
 
+            var houseId = client.BusinessId;
+            var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == houseId);
+
             Template? template = null;
             if (request.TemplateId.HasValue)
             {
                 template = await _context.Templates.FirstOrDefaultAsync(t =>
                     t.Id == request.TemplateId.Value &&
-                    t.BusinessId == business.Id &&
+                    t.BusinessId == houseId &&
                     t.Active);
             }
 
             template ??= await _context.Templates
                 .Where(t =>
-                    t.BusinessId == business.Id &&
+                    t.BusinessId == houseId &&
                     t.Key == ProposalRendererCatalog.PianoLuxury &&
                     t.Active)
                 .OrderByDescending(t => t.Version)
@@ -219,37 +222,38 @@ namespace ProposalStudio.Controllers
             {
                 advisor = await _context.Users.FirstOrDefaultAsync(u =>
                     u.Id == request.AdvisorId.Value &&
-                    u.BusinessId == business.Id &&
+                    u.BusinessId == houseId &&
                     u.Active);
             }
             else if (callerId.HasValue)
             {
                 advisor = await _context.Users.FirstOrDefaultAsync(u =>
-                    u.Id == callerId.Value && u.Active);
+                    u.Id == callerId.Value && u.BusinessId == houseId && u.Active);
             }
 
             advisor ??= await _context.Users.FirstOrDefaultAsync(u =>
-                u.BusinessId == business.Id && u.Active && u.Role == "advisor");
+                u.BusinessId == houseId && u.Active && u.Role == "advisor");
 
             if (advisor == null)
             {
                 return BadRequest("Advisor was not found.");
             }
 
-            var gov = await _pricing.GetForBusinessAsync(business.Id);
+            var gov = await _pricing.GetForBusinessAsync(houseId);
             var lastReferenceNumber = await _context.Proposals
-                .Where(p => p.BusinessId == business.Id)
+                .Where(p => p.BusinessId == houseId)
                 .MaxAsync(p => (int?)p.ReferenceNumber);
 
             var nextReferenceNumber = (lastReferenceNumber ?? 1000) + 1;
-            var reference = $"{business.ReferencePrefix}-{nextReferenceNumber}";
+            var prefix = string.IsNullOrWhiteSpace(business?.ReferencePrefix) ? "PS" : business.ReferencePrefix;
+            var reference = $"{prefix}-{nextReferenceNumber}";
             var now = DateTimeOffset.UtcNow;
             var validity = request.ValidityDays <= 0 ? 14 : request.ValidityDays;
 
             var proposal = new Proposal
             {
                 Id = Guid.NewGuid(),
-                BusinessId = business.Id,
+                BusinessId = houseId,
                 ReferenceNumber = nextReferenceNumber,
                 Reference = reference,
                 TemplateId = template.Id,
@@ -309,8 +313,12 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Only draft, sent, or viewed proposals can be edited.");
             }
 
-            var product = await _context.Products
-                .FirstOrDefaultAsync(p => p.Id == request.ProductId && p.Status == "active");
+            var product = await (
+                from p in _context.Products
+                join brand in _context.Brands on p.BrandId equals brand.Id
+                where p.Id == request.ProductId && p.Status == "active" && brand.BusinessId == proposal.BusinessId
+                select p
+            ).FirstOrDefaultAsync();
 
             if (product == null)
             {
@@ -582,7 +590,9 @@ namespace ProposalStudio.Controllers
 
             var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == source.BusinessId);
             var nextReferenceNumber = (lastReferenceNumber ?? 1000) + 1;
-            var prefix = business?.ReferencePrefix ?? "HOP";
+            var prefix = string.IsNullOrWhiteSpace(business?.ReferencePrefix)
+                ? "PS"
+                : business.ReferencePrefix;
             var now = DateTimeOffset.UtcNow;
 
             var copy = new Proposal
@@ -1139,10 +1149,16 @@ namespace ProposalStudio.Controllers
 
         private async Task<bool> CanAccessProposalAsync(Guid proposalId)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return false;
+
             var role = User.FindFirstValue(ClaimTypes.Role);
+            var scoped = BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId);
+
             if (role is "Admin" or "Manager")
             {
-                return true;
+                return await scoped.AnyAsync(p => p.Id == proposalId);
             }
 
             var userId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var uid)
@@ -1154,7 +1170,7 @@ namespace ProposalStudio.Controllers
                 return false;
             }
 
-            return await _context.Proposals.AnyAsync(p =>
+            return await scoped.AnyAsync(p =>
                 p.Id == proposalId && p.AdvisorId == userId.Value);
         }
 

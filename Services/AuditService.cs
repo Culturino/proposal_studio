@@ -143,6 +143,15 @@ namespace ProposalStudio.Services
             b.LogoAssetId
         };
 
+        public static object CategorySnapshot(ProductCategory c) => new
+        {
+            c.Id,
+            c.Name,
+            c.Slug,
+            c.Active,
+            c.SortOrder
+        };
+
         public static object PriceSnapshot(Price p) => new
         {
             p.Id,

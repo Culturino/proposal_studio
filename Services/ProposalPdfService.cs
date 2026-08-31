@@ -202,7 +202,10 @@ namespace ProposalStudio.Services
                 ? 15.1f
                 : FitSize(model.Tagline!, 445f, 15.1f, 11f, EmItalic);
             var includes = MergeIncludes(model.Included, addons);
-            var contactCompact = $"{model.Phone}    ·    {model.Website}    ·    {model.Instagram}";
+            var contactCompact = string.Join(
+                "    ·    ",
+                new[] { model.Phone, model.Website, model.Instagram }
+                    .Where(s => !string.IsNullOrWhiteSpace(s)));
 
             var dimRows = model.Dimensions.Count > 0
                 ? OrderDimensions(model.Dimensions)
@@ -1024,7 +1027,7 @@ namespace ProposalStudio.Services
             public string[]? Finishes { get; set; }
             public Dictionary<string, string>? Dimensions { get; set; }
             public string? AvailabilityNote { get; set; }
-            public string BusinessName { get; set; } = "House of Pianos";
+            public string BusinessName { get; set; } = "";
             public string? BusinessBlurb { get; set; }
             public string Phone { get; set; } = "";
             public string Website { get; set; } = "";
@@ -1169,13 +1172,6 @@ namespace ProposalStudio.Services
             return (bytes, fileName);
         }
 
-        [Obsolete("PDFs are generated on demand; use RenderAsync / RefreshContentAsync.")]
-        public async Task<string?> EnsureOnDiskAsync(AppDbContext db, Guid proposalId, bool force = false)
-        {
-            var rendered = await RenderAsync(db, proposalId);
-            return rendered == null ? null : "on-demand";
-        }
-
         public async Task<(Proposal proposal, ProposalPdfModel model)?> BuildModelAsync(AppDbContext db, Guid id)
         {
             var proposal = await db.Proposals.FirstOrDefaultAsync(p => p.Id == id);
@@ -1233,12 +1229,12 @@ namespace ProposalStudio.Services
                 Finishes: product.Finishes ?? Array.Empty<string>(),
                 Dimensions: dimensions,
                 AvailabilityNote: product.AvailabilityNote,
-                BusinessName: business?.Name ?? "House of Pianos",
+                BusinessName: business?.Name ?? "",
                 BusinessBlurb: business?.Blurb,
-                Phone: "+971 4 295 2131",
-                Website: "houseofpianos-uae.com",
-                Instagram: "@houseofpianosuae",
-                AddressLine: "Showroom 41, Street A, Al Quoz 1 (Opposite Al Serkal Avenue) · Dubai, United Arab Emirates",
+                Phone: business?.Phone ?? "",
+                Website: business?.Website ?? "",
+                Instagram: business?.Instagram ?? "",
+                AddressLine: business?.Address ?? "",
                 ProductImagePath: !string.IsNullOrWhiteSpace(imagePath) && File.Exists(imagePath)
                     ? imagePath
                     : null,

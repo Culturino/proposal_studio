@@ -31,9 +31,14 @@ namespace ProposalStudio.Controllers
             [FromQuery] string? category = null,
             [FromQuery] string? q = null)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
             var query =
                 from product in _context.Products
-                join b in _context.Brands on product.BrandId equals b.Id
+                join b in BusinessScope.Filter(_context.Brands, access, x => x.BusinessId)
+                    on product.BrandId equals b.Id
                 join cat in _context.ProductCategories on product.CategoryId equals cat.Id
                 where product.Status != "archived" && product.Status != "deleted"
                 select new { product, b, cat };
@@ -101,9 +106,13 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetProduct(Guid id)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
             var product = await (
                 from p in _context.Products
-                join brand in _context.Brands
+                join brand in BusinessScope.Filter(_context.Brands, access, x => x.BusinessId)
                     on p.BrandId equals brand.Id
                 join category in _context.ProductCategories
                     on p.CategoryId equals category.Id
@@ -152,6 +161,13 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}/finishes")]
         public async Task<IActionResult> GetFinishes(Guid id)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            if (!await ProductInBusinessAsync(id, access))
+                return NotFound("Product not found");
+
             var product = await _context.Products
                 .FirstOrDefaultAsync(p => p.Id == id);
 
@@ -231,7 +247,11 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Image must be 100 MB or smaller.");
             }
 
-            if (!await _context.Products.AnyAsync(p => p.Id == id))
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            if (!await ProductInBusinessAsync(id, access))
             {
                 return NotFound("Product not found");
             }
@@ -277,6 +297,15 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Slot must be 1, 2 or 3.");
             }
 
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            if (!await ProductInBusinessAsync(id, access))
+            {
+                return NotFound("Product not found");
+            }
+
             if (!_images.Exists(id, slot))
             {
                 return NotFound("Image not found");
@@ -303,13 +332,19 @@ namespace ProposalStudio.Controllers
                 return BadRequest("BrandId and CategoryId are required.");
             }
 
-            var brandExists = await _context.Brands.AnyAsync(b => b.Id == request.BrandId);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var brandExists = await BusinessScope.Filter(_context.Brands, access, b => b.BusinessId)
+                .AnyAsync(b => b.Id == request.BrandId);
             if (!brandExists)
             {
                 return BadRequest("Brand was not found.");
             }
 
-            var categoryExists = await _context.ProductCategories.AnyAsync(c => c.Id == request.CategoryId);
+            var categoryExists = await BusinessScope.Filter(_context.ProductCategories, access, c => c.BusinessId)
+                .AnyAsync(c => c.Id == request.CategoryId);
             if (!categoryExists)
             {
                 return BadRequest("Category was not found.");
@@ -359,7 +394,17 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] UpdateProductRequest request)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var product = await (
+                from p in _context.Products
+                join b in BusinessScope.Filter(_context.Brands, access, x => x.BusinessId)
+                    on p.BrandId equals b.Id
+                where p.Id == id
+                select p
+            ).FirstOrDefaultAsync();
 
             if (product == null)
             {
@@ -370,7 +415,8 @@ namespace ProposalStudio.Controllers
 
             if (request.BrandId.HasValue)
             {
-                var brandExists = await _context.Brands.AnyAsync(b => b.Id == request.BrandId.Value);
+                var brandExists = await BusinessScope.Filter(_context.Brands, access, b => b.BusinessId)
+                    .AnyAsync(b => b.Id == request.BrandId.Value);
                 if (!brandExists)
                 {
                     return BadRequest("Brand was not found.");
@@ -381,7 +427,7 @@ namespace ProposalStudio.Controllers
 
             if (request.CategoryId.HasValue)
             {
-                var categoryExists = await _context.ProductCategories
+                var categoryExists = await BusinessScope.Filter(_context.ProductCategories, access, c => c.BusinessId)
                     .AnyAsync(c => c.Id == request.CategoryId.Value);
                 if (!categoryExists)
                 {
@@ -466,7 +512,17 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteProduct(Guid id)
         {
-            var product = await _context.Products.FirstOrDefaultAsync(p => p.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var product = await (
+                from p in _context.Products
+                join b in BusinessScope.Filter(_context.Brands, access, x => x.BusinessId)
+                    on p.BrandId equals b.Id
+                where p.Id == id
+                select p
+            ).FirstOrDefaultAsync();
 
             if (product == null)
             {
@@ -479,6 +535,17 @@ namespace ProposalStudio.Controllers
             await _context.SaveChangesAsync();
             await _audit.LogAsync(User, "delete", "product", product.Id, before, AuditService.ProductSnapshot(product));
             return NoContent();
+        }
+
+        private Task<bool> ProductInBusinessAsync(Guid productId, BusinessScope.Access access)
+        {
+            return (
+                from p in _context.Products
+                join b in BusinessScope.Filter(_context.Brands, access, x => x.BusinessId)
+                    on p.BrandId equals b.Id
+                where p.Id == productId
+                select p
+            ).AnyAsync();
         }
 
         // Parse dimensions JSON from a string, object, or null (works with Newtonsoft + STJ).

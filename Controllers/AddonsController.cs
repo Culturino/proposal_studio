@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -21,7 +22,11 @@ namespace ProposalStudio.Controllers
         [HttpGet]
         public async Task<IActionResult> GetAddons()
         {
-            var addons = await _context.Addons
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var addons = await BusinessScope.Filter(_context.Addons, access, a => a.BusinessId)
                 .Where(a => a.Active)
                 .Select(a => new
                 {
@@ -42,7 +47,11 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetAddon(Guid id)
         {
-            var addon = await _context.Addons
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var addon = await BusinessScope.Filter(_context.Addons, access, a => a.BusinessId)
                 .FirstOrDefaultAsync(a => a.Id == id);
 
             if (addon == null)
@@ -55,7 +64,13 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateAddon(Addon addon)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var houseId = access.TargetId(addon.BusinessId == Guid.Empty ? null : addon.BusinessId);
+            if (houseId is not Guid businessId)
+                return BadRequest(BusinessScope.MissingMessage);
+
             addon.Id = Guid.NewGuid();
+            addon.BusinessId = businessId;
             addon.CreatedAt = DateTimeOffset.UtcNow;
             addon.UpdatedAt = DateTimeOffset.UtcNow;
             addon.Active = true;
@@ -70,7 +85,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateAddon(Guid id, [FromBody] UpdateAddonRequest request)
         {
-            var addon = await _context.Addons.FirstOrDefaultAsync(a => a.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var addon = await BusinessScope.Filter(_context.Addons, access, a => a.BusinessId)
+                .FirstOrDefaultAsync(a => a.Id == id);
 
             if (addon == null)
                 return NotFound();
@@ -112,7 +132,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteAddon(Guid id)
         {
-            var addon = await _context.Addons.FirstOrDefaultAsync(a => a.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var addon = await BusinessScope.Filter(_context.Addons, access, a => a.BusinessId)
+                .FirstOrDefaultAsync(a => a.Id == id);
 
             if (addon == null)
                 return NotFound();

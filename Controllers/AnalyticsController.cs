@@ -40,7 +40,11 @@ namespace ProposalStudio.Controllers
             var fromDate = from ?? new DateTimeOffset(DateTime.UtcNow.Date.AddDays(-28), TimeSpan.Zero);
             var toDate = to ?? DateTimeOffset.UtcNow;
 
-            var proposalsQuery = _context.Proposals.AsQueryable();
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var proposalsQuery = BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId);
 
             if (!canSeeAll && userId.HasValue)
             {

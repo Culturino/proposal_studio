@@ -37,7 +37,12 @@ namespace ProposalStudio.Controllers
             if (userId == null)
                 return Unauthorized();
 
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == body.ProposalId);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var proposal = await BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId)
+                .FirstOrDefaultAsync(p => p.Id == body.ProposalId);
             if (proposal == null)
                 return NotFound("Proposal was not found.");
 
@@ -134,7 +139,12 @@ namespace ProposalStudio.Controllers
             if (userId == null)
                 return Unauthorized();
 
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == body.ProposalId);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var proposal = await BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId)
+                .FirstOrDefaultAsync(p => p.Id == body.ProposalId);
             if (proposal == null)
                 return NotFound("Proposal was not found.");
 
@@ -213,10 +223,15 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin,Manager")]
         public async Task<IActionResult> GetPending()
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
             var rows = await (
                 from a in _context.ApprovalRequests
                 where a.Status == "pending" && (a.Kind == "below_floor" || a.Kind == "high_value")
-                join p in _context.Proposals on a.ProposalId equals p.Id
+                join p in BusinessScope.Filter(_context.Proposals, access, x => x.BusinessId)
+                    on a.ProposalId equals p.Id
                 join u in _context.Users on a.RequestedBy equals u.Id
                 join c in _context.Clients on p.ClientId equals c.Id into clients
                 from c in clients.DefaultIfEmpty()
@@ -247,6 +262,15 @@ namespace ProposalStudio.Controllers
         [HttpGet("for-proposal/{proposalId:guid}")]
         public async Task<IActionResult> ForProposal(Guid proposalId)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var owned = await BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId)
+                .AnyAsync(p => p.Id == proposalId);
+            if (!owned)
+                return NotFound();
+
             var latest = await _context.ApprovalRequests
                 .Where(a => a.ProposalId == proposalId && a.Kind == "below_floor")
                 .OrderByDescending(a => a.CreatedAt)
@@ -281,6 +305,12 @@ namespace ProposalStudio.Controllers
             if (request.Status != "pending")
                 return BadRequest($"Request is already {request.Status}.");
 
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var proposal = await BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId)
+                .FirstOrDefaultAsync(p => p.Id == request.ProposalId);
+            if (!access.Ok || proposal == null)
+                return NotFound();
+
             var approverId = Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var aid)
                 ? aid
                 : (Guid?)null;
@@ -296,8 +326,6 @@ namespace ProposalStudio.Controllers
                     ? note
                     : $"{request.Message}\n— Decision: {note}";
             }
-
-            var proposal = await _context.Proposals.FirstOrDefaultAsync(p => p.Id == request.ProposalId);
 
             // The request has been dealt with — drop every notification it produced.
             var related = await _context.Notifications

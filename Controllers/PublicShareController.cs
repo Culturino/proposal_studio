@@ -79,8 +79,8 @@ namespace ProposalStudio.Controllers
                 ExpiresAt = proposal.ExpiresAt ?? link.ExpiresAt,
                 ClientName = client?.Name,
                 AdvisorName = advisor?.Name,
-                BusinessName = business?.Name ?? "House of Pianos",
-                ContactLine = "Dubai, UAE · houseofpianos.ae",
+                BusinessName = business?.Name,
+                ContactLine = (string?)null,
                 PdfAvailable = hasItem,
                 PdfPath = $"/api/p/{link.Token}/pdf"
             });

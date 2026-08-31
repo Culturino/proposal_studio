@@ -12,6 +12,12 @@ namespace ProposalStudio.Data
             "across the UAE. Our advisors pair each client with the right voice, finish, and presentation, " +
             "then accompany every proposal from first sitting through white-glove delivery and lifelong care.";
 
+        public const string HouseOfPianosPhone = "+971 4 295 2131";
+        public const string HouseOfPianosWebsite = "houseofpianos-uae.com";
+        public const string HouseOfPianosInstagram = "@houseofpianosuae";
+        public const string HouseOfPianosAddress =
+            "Showroom 41, Street A, Al Quoz 1 (Opposite Al Serkal Avenue) · Dubai, United Arab Emirates";
+
         public static readonly Dictionary<string, string> BrandBlurbs = new(StringComparer.OrdinalIgnoreCase)
         {
             ["Steinway & Sons"] =

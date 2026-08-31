@@ -251,6 +251,26 @@ if (corsOrigins.Length > 0)
     app.UseCors("AllowFrontend");
 }
 app.UseAuthentication();
+app.Use(async (context, next) =>
+{
+    Guid? picked = null;
+    if (context.Request.Headers.TryGetValue("X-Business-Id", out var header) &&
+        Guid.TryParse(header.ToString(), out var fromHeader))
+        picked = fromHeader;
+    else if (context.Request.Query.TryGetValue("businessId", out var query) &&
+             Guid.TryParse(query.ToString(), out var fromQuery))
+        picked = fromQuery;
+
+    BusinessScope.SetRequestBusinessId(picked);
+    try
+    {
+        await next();
+    }
+    finally
+    {
+        BusinessScope.SetRequestBusinessId(null);
+    }
+});
 app.UseAuthorization();
 app.MapControllers();
 

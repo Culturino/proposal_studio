@@ -25,7 +25,11 @@ namespace ProposalStudio.Controllers
         [HttpGet]
         public async Task<IActionResult> GetClients()
         {
-            var visible = VisibleProposals();
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var visible = VisibleProposals(access);
             var stats = await visible
                 .GroupBy(p => p.ClientId)
                 .Select(g => new
@@ -38,7 +42,7 @@ namespace ProposalStudio.Controllers
 
             var byClient = stats.ToDictionary(s => s.ClientId);
 
-            var clients = await _context.Clients
+            var clients = await BusinessScope.Filter(_context.Clients, access, c => c.BusinessId)
                 .OrderBy(c => c.Name)
                 .Select(c => new
                 {
@@ -79,7 +83,11 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetClient(Guid id)
         {
-            var client = await _context.Clients
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var client = await BusinessScope.Filter(_context.Clients, access, c => c.BusinessId)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (client == null)
@@ -93,14 +101,19 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}/activity")]
         public async Task<IActionResult> GetActivity(Guid id)
         {
-            var client = await _context.Clients.FirstOrDefaultAsync(c => c.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var client = await BusinessScope.Filter(_context.Clients, access, c => c.BusinessId)
+                .FirstOrDefaultAsync(c => c.Id == id);
             if (client == null)
                 return NotFound();
 
             await _expiry.ExpireOverdueAsync();
 
             var proposals = await (
-                from p in VisibleProposals().Where(p => p.ClientId == id)
+                from p in VisibleProposals(access).Where(p => p.ClientId == id)
                 join adv in _context.Users on p.AdvisorId equals adv.Id into advisors
                 from adv in advisors.DefaultIfEmpty()
                 orderby p.UpdatedAt descending
@@ -238,18 +251,15 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Client name is required.");
             }
 
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
-
-            if (business == null)
-            {
-                return BadRequest("Default business was not found.");
-            }
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var houseId = access.TargetId();
+            if (houseId is not Guid businessId)
+                return BadRequest(BusinessScope.MissingMessage);
 
             var client = new Client
             {
                 Id = Guid.NewGuid(),
-                BusinessId = business.Id,
+                BusinessId = businessId,
                 Name = request.Name.Trim(),
                 Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim(),
                 Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
@@ -268,7 +278,11 @@ namespace ProposalStudio.Controllers
         [HttpPatch("{id}")]
         public async Task<IActionResult> UpdateClient(Guid id, UpdateClientRequest request)
         {
-            var client = await _context.Clients
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var client = await BusinessScope.Filter(_context.Clients, access, c => c.BusinessId)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (client == null)
@@ -310,7 +324,11 @@ namespace ProposalStudio.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteClient(Guid id)
         {
-            var client = await _context.Clients
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var client = await BusinessScope.Filter(_context.Clients, access, c => c.BusinessId)
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (client == null)
@@ -333,10 +351,10 @@ namespace ProposalStudio.Controllers
             return NoContent();
         }
 
-        private IQueryable<Proposal> VisibleProposals()
+        private IQueryable<Proposal> VisibleProposals(BusinessScope.Access access)
         {
             var role = User.FindFirstValue(ClaimTypes.Role);
-            var query = _context.Proposals.AsQueryable();
+            var query = BusinessScope.Filter(_context.Proposals, access, p => p.BusinessId);
             if (role is "Admin" or "Manager")
                 return query;
 

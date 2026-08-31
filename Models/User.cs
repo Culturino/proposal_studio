@@ -18,6 +18,7 @@
 
         public bool Active { get; set; }
 
+        // Later plans.
         public bool TwoFactorEnabled { get; set; }
 
         public DateTimeOffset CreatedAt { get; set; }

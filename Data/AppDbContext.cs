@@ -49,6 +49,10 @@ namespace ProposalStudio.Data
                 entity.Property(e => e.Slug).HasColumnName("slug");
                 entity.Property(e => e.ReferencePrefix).HasColumnName("reference_prefix");
                 entity.Property(e => e.Blurb).HasColumnName("blurb");
+                entity.Property(e => e.Phone).HasColumnName("phone");
+                entity.Property(e => e.Website).HasColumnName("website");
+                entity.Property(e => e.Instagram).HasColumnName("instagram");
+                entity.Property(e => e.Address).HasColumnName("address");
                 entity.Property(e => e.BrandKitId).HasColumnName("brand_kit_id");
                 entity.Property(e => e.Active).HasColumnName("active");
                 entity.Property(e => e.CreatedAt).HasColumnName("created_at");

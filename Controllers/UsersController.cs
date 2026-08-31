@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
 using ProposalStudio.Services;
@@ -26,8 +27,12 @@ namespace ProposalStudio.Controllers
         [HttpGet]
         public async Task<IActionResult> GetUsers()
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
             // Hide deactivated users from the admin directory (soft-deleted with proposal history)
-            var users = await _context.Users
+            var users = await BusinessScope.Filter(_context.Users, access, u => u.BusinessId)
                 .Where(u => u.Active)
                 .Select(u => new
                 {
@@ -47,70 +52,17 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetUser(Guid id)
         {
-            var user = await _context.Users
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var user = await BusinessScope.Filter(_context.Users, access, u => u.BusinessId)
                 .FirstOrDefaultAsync(u => u.Id == id);
 
             if (user == null)
                 return NotFound();
 
-            return Ok(new
-            {
-                user.Id,
-                user.Name,
-                user.Email,
-                user.Phone,
-                user.Role,
-                user.Active,
-                user.BusinessId,
-                user.CreatedAt
-            });
-        }
-
-        // POST: api/users (Admin)
-        [HttpPost]
-        [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
-            {
-                return BadRequest("Email and password are required.");
-            }
-
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
-
-            if (business == null)
-            {
-                return BadRequest("Default business was not found.");
-            }
-
-            var user = new User
-            {
-                Id = Guid.NewGuid(),
-                BusinessId = request.BusinessId ?? business.Id,
-                Name = request.Name?.Trim() ?? request.Email.Trim(),
-                Email = request.Email.Trim().ToLower(),
-                Phone = request.Phone,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                Role = string.IsNullOrWhiteSpace(request.Role) ? "advisor" : request.Role.Trim().ToLower(),
-                Active = true,
-                TwoFactorEnabled = false,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow
-            };
-
-            _context.Users.Add(user);
-            await _context.SaveChangesAsync();
-            await _audit.LogAsync(User, "create", "user", user.Id, null, AuditService.UserRoleSnapshot(user));
-
-            return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new
-            {
-                user.Id,
-                user.Name,
-                user.Email,
-                user.Role,
-                user.Active
-            });
+            return Ok(PublicUser(user));
         }
 
         // PATCH: api/users/{id} (Admin)
@@ -118,7 +70,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UpdateUserRequest request)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var user = await BusinessScope.Filter(_context.Users, access, u => u.BusinessId)
+                .FirstOrDefaultAsync(u => u.Id == id);
 
             if (user == null)
                 return NotFound();
@@ -134,7 +91,11 @@ namespace ProposalStudio.Controllers
 
             if (request.Email != null && !string.IsNullOrWhiteSpace(request.Email))
             {
-                user.Email = request.Email.Trim().ToLower();
+                var email = request.Email.Trim().ToLowerInvariant();
+                var taken = await _context.Users.AnyAsync(u => u.Email == email && u.Id != id);
+                if (taken)
+                    return Conflict("That email is already in use.");
+                user.Email = email;
             }
 
             if (request.Role != null && !string.IsNullOrWhiteSpace(request.Role))
@@ -149,7 +110,15 @@ namespace ProposalStudio.Controllers
 
             user.UpdatedAt = DateTimeOffset.UtcNow;
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (
+                ex.InnerException is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                return Conflict("That email is already in use.");
+            }
 
             var roleChanged = !string.Equals(prevRole, user.Role, StringComparison.OrdinalIgnoreCase);
             var activeChanged = prevActive != user.Active;
@@ -164,38 +133,7 @@ namespace ProposalStudio.Controllers
                     AuditService.UserRoleSnapshot(user));
             }
 
-            return Ok(user);
-        }
-
-        // PATCH: api/users/{id}/password
-        [HttpPatch("{id}/password")]
-        [Authorize]
-        public async Task<IActionResult> UpdatePassword(Guid id, [FromBody] UpdatePasswordRequest request)
-        {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
-            if (user == null)
-            {
-                return NotFound();
-            }
-
-            // Security Check: Ensure the caller is either an Admin OR updating their own password
-            var callerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var callerRole = User.FindFirst(ClaimTypes.Role)?.Value;
-
-            if (callerId != id.ToString() && callerRole != "Admin")
-            {
-                return Forbid();
-            }
-
-            // Hash the password using BCrypt
-            var hashedPassword = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
-
-            user.PasswordHash = hashedPassword;
-            user.UpdatedAt = DateTimeOffset.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Password updated successfully" });
+            return Ok(PublicUser(user));
         }
 
         // DELETE: api/users/{id} (Admin)
@@ -203,7 +141,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteUser(Guid id)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var user = await BusinessScope.Filter(_context.Users, access, u => u.BusinessId)
+                .FirstOrDefaultAsync(u => u.Id == id);
 
             if (user == null)
                 return NotFound();
@@ -222,16 +165,18 @@ namespace ProposalStudio.Controllers
             await _audit.LogAsync(User, "delete", "user", user.Id, before, AuditService.UserRoleSnapshot(user));
             return NoContent();
         }
-    }
 
-    public class CreateUserRequest
-    {
-        public string Name { get; set; } = string.Empty;
-        public string Email { get; set; } = string.Empty;
-        public string Password { get; set; } = string.Empty;
-        public string? Phone { get; set; }
-        public string? Role { get; set; }
-        public Guid? BusinessId { get; set; }
+        private static object PublicUser(User user) => new
+        {
+            user.Id,
+            user.Name,
+            user.Email,
+            user.Phone,
+            user.Role,
+            user.Active,
+            user.BusinessId,
+            user.CreatedAt
+        };
     }
 
     public class UpdateUserRequest
@@ -240,10 +185,5 @@ namespace ProposalStudio.Controllers
         public string? Email { get; set; }
         public string? Role { get; set; }
         public bool? Active { get; set; }
-    }
-
-    public class UpdatePasswordRequest
-    {
-        public string NewPassword { get; set; } = string.Empty;
     }
 }

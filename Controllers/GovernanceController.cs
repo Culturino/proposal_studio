@@ -23,17 +23,14 @@ namespace ProposalStudio.Controllers
 
         // GET: api/governance
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get([FromQuery] Guid? businessId = null)
         {
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var houseId = access.TargetId(businessId);
+            if (houseId is not Guid id)
+                return BadRequest(BusinessScope.MissingMessage);
 
-            if (business == null)
-            {
-                return BadRequest("Default business was not found.");
-            }
-
-            var settings = await _pricing.GetForBusinessAsync(business.Id);
+            var settings = await _pricing.GetForBusinessAsync(id);
 
             return Ok(new
             {
@@ -49,18 +46,17 @@ namespace ProposalStudio.Controllers
         // PATCH: api/governance (Admin only)
         [HttpPatch]
         [Authorize(Roles = "Admin")]
-        public async Task<IActionResult> Update([FromBody] UpdateGovernanceRequest request)
+        public async Task<IActionResult> Update(
+            [FromBody] UpdateGovernanceRequest request,
+            [FromQuery] Guid? businessId = null)
         {
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
-
-            if (business == null)
-            {
-                return BadRequest("Default business was not found.");
-            }
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var houseId = access.TargetId(businessId);
+            if (houseId is not Guid id)
+                return BadRequest(BusinessScope.MissingMessage);
 
             var settings = await _context.GovernanceSettings
-                .FirstOrDefaultAsync(g => g.BusinessId == business.Id);
+                .FirstOrDefaultAsync(g => g.BusinessId == id);
 
             var now = DateTimeOffset.UtcNow;
 
@@ -69,7 +65,7 @@ namespace ProposalStudio.Controllers
                 settings = new GovernanceSettings
                 {
                     Id = Guid.NewGuid(),
-                    BusinessId = business.Id,
+                    BusinessId = id,
                     DiscountFloorPercent = 8m,
                     HighValueThreshold = 1_000_000m,
                     VatDefaultMode = "line",

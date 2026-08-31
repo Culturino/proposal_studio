@@ -36,7 +36,11 @@ namespace ProposalStudio.Controllers
         [HttpGet]
         public async Task<IActionResult> GetTemplates()
         {
-            var templates = await _context.Templates
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(new { message = BusinessScope.MissingMessage });
+
+            var templates = await BusinessScope.Filter(_context.Templates, access, t => t.BusinessId)
                 .Where(t => t.Active)
                 .OrderByDescending(t => t.Version)
                 .ToListAsync();
@@ -48,7 +52,11 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetTemplate(Guid id)
         {
-            var template = await _context.Templates
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(new { message = BusinessScope.MissingMessage });
+
+            var template = await BusinessScope.Filter(_context.Templates, access, t => t.BusinessId)
                 .FirstOrDefaultAsync(t => t.Id == id);
 
             if (template == null)
@@ -70,20 +78,20 @@ namespace ProposalStudio.Controllers
 
             var renderer = ProposalRendererCatalog.Require(request.Key);
 
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
-            if (business == null)
-                return BadRequest(new { message = "Business was not found." });
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var houseId = access.TargetId();
+            if (houseId is not Guid businessId)
+                return BadRequest(new { message = BusinessScope.MissingMessage });
 
             var kit = await _context.BrandKits
-                .FirstOrDefaultAsync(k => k.BusinessId == business.Id);
+                .FirstOrDefaultAsync(k => k.BusinessId == businessId);
             var palette = kit == null ? PdfPalette.Defaults : PdfPalette.FromJson(kit.Colors);
 
             var now = DateTimeOffset.UtcNow;
             var template = new Template
             {
                 Id = Guid.NewGuid(),
-                BusinessId = business.Id,
+                BusinessId = businessId,
                 Key = renderer.Key,
                 Name = request.Name.Trim(),
                 Version = request.Version is > 0 ? request.Version.Value : 1,
@@ -105,7 +113,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateTemplate(Guid id, [FromBody] UpdateTemplateRequest request)
         {
-            var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(new { message = BusinessScope.MissingMessage });
+
+            var template = await BusinessScope.Filter(_context.Templates, access, t => t.BusinessId)
+                .FirstOrDefaultAsync(t => t.Id == id);
 
             if (template == null)
                 return NotFound();
@@ -150,7 +163,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteTemplate(Guid id)
         {
-            var template = await _context.Templates.FirstOrDefaultAsync(t => t.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(new { message = BusinessScope.MissingMessage });
+
+            var template = await BusinessScope.Filter(_context.Templates, access, t => t.BusinessId)
+                .FirstOrDefaultAsync(t => t.Id == id);
 
             if (template == null)
                 return NotFound();

@@ -33,7 +33,7 @@ namespace ProposalStudio.Controllers
 
             var email = request.Email.Trim().ToLowerInvariant();
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Active && u.Email != null && u.Email.ToLower() == email);
+                .FirstOrDefaultAsync(u => u.Active && u.Email == email);
 
             if (user == null || string.IsNullOrWhiteSpace(user.PasswordHash))
             {
@@ -78,7 +78,6 @@ namespace ProposalStudio.Controllers
             {
                 token = tokenHandler.WriteToken(token),
                 role = appRole,
-                jwtRole,
                 userId = user.Id,
                 businessId = user.BusinessId,
                 email = user.Email,
@@ -88,7 +87,6 @@ namespace ProposalStudio.Controllers
 
         // GET: api/auth/me
         [HttpGet("me")]
-        [Authorize]
         public async Task<IActionResult> Me()
         {
             var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);

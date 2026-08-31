@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
 using ProposalStudio.Models;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -18,11 +19,57 @@ namespace ProposalStudio.Controllers
             _context = context;
         }
 
+        [HttpGet("current")]
+        [AllowAnonymous]
+        public async Task<IActionResult> GetCurrent()
+        {
+            Business? row = null;
+            if (User.Identity?.IsAuthenticated == true)
+                row = await BusinessScope.ForUserAsync(_context, User);
+
+            row ??= await _context.Businesses
+                .Where(b => b.Active)
+                .OrderBy(b => b.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (row == null)
+            {
+                return NotFound("No business is configured.");
+            }
+
+            return Ok(new
+            {
+                row.Id,
+                row.Name,
+                row.Slug,
+                row.ReferencePrefix,
+                row.Blurb,
+                row.Phone,
+                row.Website,
+                row.Instagram,
+                row.Address
+            });
+        }
+
         // GET: api/businesses
         [HttpGet]
         public async Task<ActionResult<List<Business>>> GetBusinesses()
         {
+            if (BusinessScope.IsPlatformAdmin(User))
+            {
+                var all = await _context.Businesses
+                    .Where(b => b.Active)
+                    .OrderBy(b => b.Name)
+                    .ToListAsync();
+                return Ok(all);
+            }
+
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
             var businesses = await _context.Businesses
+                .Where(b => b.Id == access.HomeId)
                 .OrderBy(b => b.Name)
                 .ToListAsync();
 
@@ -30,9 +77,16 @@ namespace ProposalStudio.Controllers
         }
 
         // GET: api/businesses/{id}
-        [HttpGet("{id}")]
+        [HttpGet("{id:guid}")]
         public async Task<ActionResult<Business>> GetBusiness(Guid id)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            if (!access.Unrestricted && access.HomeId != id)
+                return NotFound();
+
             var business = await _context.Businesses
                 .FirstOrDefaultAsync(b => b.Id == id);
 
@@ -46,6 +100,7 @@ namespace ProposalStudio.Controllers
 
         // POST: api/businesses
         [HttpPost]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateBusiness([FromBody] CreateBusinessRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Name) || string.IsNullOrWhiteSpace(request.Slug))
@@ -73,9 +128,17 @@ namespace ProposalStudio.Controllers
         }
 
         // PATCH: api/businesses/{id}
-        [HttpPatch("{id}")]
+        [HttpPatch("{id:guid}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateBusiness(Guid id, [FromBody] UpdateBusinessRequest request)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            if (!access.Unrestricted && access.HomeId != id)
+                return NotFound();
+
             var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == id);
 
             if (business == null)
@@ -103,6 +166,26 @@ namespace ProposalStudio.Controllers
                 business.Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim();
             }
 
+            if (request.Phone != null)
+            {
+                business.Phone = string.IsNullOrWhiteSpace(request.Phone) ? "" : request.Phone.Trim();
+            }
+
+            if (request.Website != null)
+            {
+                business.Website = string.IsNullOrWhiteSpace(request.Website) ? "" : request.Website.Trim();
+            }
+
+            if (request.Instagram != null)
+            {
+                business.Instagram = string.IsNullOrWhiteSpace(request.Instagram) ? "" : request.Instagram.Trim();
+            }
+
+            if (request.Address != null)
+            {
+                business.Address = string.IsNullOrWhiteSpace(request.Address) ? "" : request.Address.Trim();
+            }
+
             if (request.BrandKitId.HasValue)
             {
                 business.BrandKitId = request.BrandKitId.Value;
@@ -121,9 +204,17 @@ namespace ProposalStudio.Controllers
         }
 
         // DELETE: api/businesses/{id}
-        [HttpDelete("{id}")]
+        [HttpDelete("{id:guid}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteBusiness(Guid id)
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            if (!access.Unrestricted && access.HomeId != id)
+                return NotFound();
+
             var business = await _context.Businesses.FirstOrDefaultAsync(b => b.Id == id);
 
             if (business == null)
@@ -153,6 +244,10 @@ namespace ProposalStudio.Controllers
         public string? Slug { get; set; }
         public string? ReferencePrefix { get; set; }
         public string? Blurb { get; set; }
+        public string? Phone { get; set; }
+        public string? Website { get; set; }
+        public string? Instagram { get; set; }
+        public string? Address { get; set; }
         public Guid? BrandKitId { get; set; }
         public bool? Active { get; set; }
     }

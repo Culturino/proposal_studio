@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProposalStudio.Data;
+using ProposalStudio.Services;
 
 namespace ProposalStudio.Controllers
 {
@@ -28,10 +29,18 @@ namespace ProposalStudio.Controllers
         {
             limit = Math.Clamp(limit, 1, 500);
 
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var open = access.Unrestricted;
+            var home = access.HomeId ?? Guid.Empty;
+
             var query =
                 from log in _context.AuditLogs
                 join actor in _context.Users on log.ActorId equals actor.Id into actors
                 from actor in actors.DefaultIfEmpty()
+                where open || (actor != null && actor.BusinessId == home)
                 select new { log, actor };
 
             if (!string.IsNullOrWhiteSpace(entity))

@@ -28,10 +28,18 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> List()
         {
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var open = access.Unrestricted;
+            var home = access.HomeId ?? Guid.Empty;
+
             var rows = await (
                 from i in _context.UserInvites
                 join u in _context.Users on i.CreatedBy equals u.Id into creators
                 from u in creators.DefaultIfEmpty()
+                where open || (u != null && u.BusinessId == home)
                 orderby i.CreatedAt descending
                 select new
                 {
@@ -146,10 +154,9 @@ namespace ProposalStudio.Controllers
             if (taken)
                 return Conflict("That email is already in use.");
 
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
+            var business = await BusinessScope.ForUserIdAsync(_context, invite.CreatedBy);
             if (business == null)
-                return BadRequest("Default business was not found.");
+                return BadRequest("The inviting account has no business.");
 
             var now = DateTimeOffset.UtcNow;
             var user = new User
@@ -162,7 +169,7 @@ namespace ProposalStudio.Controllers
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
                 Role = invite.Role,
                 Active = true,
-                TwoFactorEnabled = false,
+                TwoFactorEnabled = false, // later plans
                 CreatedAt = now,
                 UpdatedAt = now
             };

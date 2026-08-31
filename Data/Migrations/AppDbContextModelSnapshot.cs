@@ -301,6 +301,10 @@ namespace ProposalStudio.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("active");
 
+                    b.Property<string>("Address")
+                        .HasColumnType("text")
+                        .HasColumnName("address");
+
                     b.Property<string>("Blurb")
                         .HasColumnType("text")
                         .HasColumnName("blurb");
@@ -313,10 +317,18 @@ namespace ProposalStudio.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Instagram")
+                        .HasColumnType("text")
+                        .HasColumnName("instagram");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("name");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
 
                     b.Property<string>("ReferencePrefix")
                         .IsRequired()
@@ -331,6 +343,10 @@ namespace ProposalStudio.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<string>("Website")
+                        .HasColumnType("text")
+                        .HasColumnName("website");
 
                     b.HasKey("Id");
 

@@ -25,7 +25,11 @@ namespace ProposalStudio.Controllers
         [HttpGet]
         public async Task<IActionResult> GetBrands()
         {
-            var brands = await _context.Brands
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var brands = await BusinessScope.Filter(_context.Brands, access, b => b.BusinessId)
                 .OrderBy(b => b.Name)
                 .Select(b => new
                 {
@@ -47,7 +51,11 @@ namespace ProposalStudio.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetBrand(Guid id)
         {
-            var brand = await _context.Brands
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var brand = await BusinessScope.Filter(_context.Brands, access, b => b.BusinessId)
                 .Where(b => b.Id == id)
                 .Select(b => new
                 {
@@ -76,16 +84,14 @@ namespace ProposalStudio.Controllers
                 return BadRequest("Brand name is required.");
             }
 
-            var business = await _context.Businesses
-                .FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
-            if (business == null)
-            {
-                return BadRequest("Default business was not found.");
-            }
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            var houseId = access.TargetId(request.BusinessId == Guid.Empty ? null : request.BusinessId);
+            if (houseId is not Guid businessId)
+                return BadRequest(BusinessScope.MissingMessage);
 
             var name = request.Name.Trim();
             var duplicate = await _context.Brands
-                .AnyAsync(b => b.BusinessId == business.Id && b.Name == name);
+                .AnyAsync(b => b.BusinessId == businessId && b.Name == name);
             if (duplicate)
             {
                 return Conflict($"A brand called \"{name}\" already exists.");
@@ -94,7 +100,7 @@ namespace ProposalStudio.Controllers
             var brand = new Brand
             {
                 Id = Guid.NewGuid(),
-                BusinessId = request.BusinessId == Guid.Empty ? business.Id : request.BusinessId,
+                BusinessId = businessId,
                 Name = name,
                 Blurb = string.IsNullOrWhiteSpace(request.Blurb) ? null : request.Blurb.Trim(),
                 LogoAssetId = request.LogoAssetId,
@@ -114,7 +120,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateBrand(Guid id, [FromBody] UpdateBrandRequest request)
         {
-            var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var brand = await BusinessScope.Filter(_context.Brands, access, b => b.BusinessId)
+                .FirstOrDefaultAsync(b => b.Id == id);
 
             if (brand == null)
             {
@@ -164,7 +175,12 @@ namespace ProposalStudio.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteBrand(Guid id)
         {
-            var brand = await _context.Brands.FirstOrDefaultAsync(b => b.Id == id);
+            var access = await BusinessScope.ResolveAsync(_context, User);
+            if (!access.Ok)
+                return BadRequest(BusinessScope.MissingMessage);
+
+            var brand = await BusinessScope.Filter(_context.Brands, access, b => b.BusinessId)
+                .FirstOrDefaultAsync(b => b.Id == id);
 
             if (brand == null)
             {

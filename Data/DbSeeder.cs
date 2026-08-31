@@ -44,7 +44,11 @@ namespace ProposalStudio.Data
         {
             var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
             if (business != null)
+            {
+                FillHopContactIfEmpty(business, now);
+                await db.SaveChangesAsync();
                 return business;
+            }
 
             business = new Business
             {
@@ -53,6 +57,10 @@ namespace ProposalStudio.Data
                 Slug = "house-of-pianos",
                 ReferencePrefix = "HOP",
                 Blurb = CatalogCopy.HouseOfPianosBlurb,
+                Phone = CatalogCopy.HouseOfPianosPhone,
+                Website = CatalogCopy.HouseOfPianosWebsite,
+                Instagram = CatalogCopy.HouseOfPianosInstagram,
+                Address = CatalogCopy.HouseOfPianosAddress,
                 Active = true,
                 CreatedAt = now,
                 UpdatedAt = now
@@ -60,6 +68,37 @@ namespace ProposalStudio.Data
             db.Businesses.Add(business);
             await db.SaveChangesAsync();
             return business;
+        }
+
+        /// <summary>
+        /// After the contact columns land, fill House of Pianos once. Never overwrite
+        /// a value an admin has already saved (including a blank they cleared).
+        /// </summary>
+        private static void FillHopContactIfEmpty(Business business, DateTimeOffset now)
+        {
+            var touched = false;
+            if (business.Phone == null)
+            {
+                business.Phone = CatalogCopy.HouseOfPianosPhone;
+                touched = true;
+            }
+            if (business.Website == null)
+            {
+                business.Website = CatalogCopy.HouseOfPianosWebsite;
+                touched = true;
+            }
+            if (business.Instagram == null)
+            {
+                business.Instagram = CatalogCopy.HouseOfPianosInstagram;
+                touched = true;
+            }
+            if (business.Address == null)
+            {
+                business.Address = CatalogCopy.HouseOfPianosAddress;
+                touched = true;
+            }
+            if (touched)
+                business.UpdatedAt = now;
         }
 
         private static async Task<Dictionary<string, Brand>> EnsureBrandsAsync(
@@ -333,11 +372,11 @@ namespace ProposalStudio.Data
                 Id = Guid.NewGuid(),
                 BusinessId = business.Id,
                 Name = string.IsNullOrWhiteSpace(options.AdminName) ? "Administrator" : options.AdminName!,
-                Email = options.AdminEmail!.Trim(),
+                Email = options.AdminEmail!.Trim().ToLowerInvariant(),
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(options.AdminPassword),
                 Role = "admin",
                 Active = true,
-                TwoFactorEnabled = false,
+                TwoFactorEnabled = false, // later plans
                 CreatedAt = now,
                 UpdatedAt = now
             });
@@ -384,7 +423,7 @@ namespace ProposalStudio.Data
                     PasswordHash = hash,
                     Role = role,
                     Active = true,
-                    TwoFactorEnabled = false,
+                    TwoFactorEnabled = false, // later plans
                     CreatedAt = now,
                     UpdatedAt = now
                 });
@@ -406,7 +445,7 @@ namespace ProposalStudio.Data
         private static async Task RefreshBlurbsAsync(AppDbContext db, DateTimeOffset now)
         {
             var business = await db.Businesses.FirstOrDefaultAsync(b => b.Slug == "house-of-pianos");
-            if (business != null && business.Blurb != CatalogCopy.HouseOfPianosBlurb)
+            if (business != null && string.IsNullOrWhiteSpace(business.Blurb))
             {
                 business.Blurb = CatalogCopy.HouseOfPianosBlurb;
                 business.UpdatedAt = now;
